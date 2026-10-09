@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "dk-tools",
+  "description": "Small tools for day-to-day work at DevKore.",
+  "owner": {
+    "name": "DevKore",
+    "email": "nate@devkore.com"
+  },
+  "plugins": [
+    {
+      "name": "kore-router",
+      "source": "./kore-router",
+      "description": "Sends each prompt to the model and effort it deserves, picked by rules and a cheap classifier (Jev or Haiku).",
+      "version": "0.1.0",
+      "author": {
+        "name": "Nate Soria",
+        "email": "nate@devkore.com"
+      },
+      "license": "MIT",
+      "keywords": ["routing", "model-selection", "effort", "hooks"]
+    }
+  ]
+}

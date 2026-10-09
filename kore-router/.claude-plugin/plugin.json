@@ -1,5 +1,10 @@
 {
   "name": "kore-router",
   "version": "0.1.0",
-  "description": "Sends each prompt to the model and effort it deserves, picked by rules and a cheap classifier (Jev or Haiku)."
+  "description": "Sends each prompt to the model and effort it deserves, picked by rules and a cheap classifier (Jev or Haiku).",
+  "license": "MIT",
+  "author": {
+    "name": "Nate Soria",
+    "email": "nate@devkore.com"
+  }
 }
