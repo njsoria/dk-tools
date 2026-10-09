@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+
+# kore-router: the TypeSafe API key, and the API types Claude Code lays beside a loaded mod.
+.env
+kore-router/.claude-plugin/types/
+kore-router/routes.log.jsonl

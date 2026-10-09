@@ -1,0 +1,36 @@
+{
+  "classifier": "jev",
+  "minConfidence": 0.5,
+  "timeoutMs": 5000,
+  "stepDownUntilMessages": 30,
+
+  "rules": [
+    { "match": "\\bultrathink\\b", "model": "opus", "effort": "max", "why": "asked for maximum thinking" },
+    { "match": "^\\s*(typo|rename|reformat|format)\\b", "model": "haiku", "effort": "low", "why": "mechanical edit" }
+  ],
+
+  "models": [
+    {
+      "name": "haiku",
+      "id": "claude-haiku-5-5",
+      "when": "A quick, self-contained job with an obvious answer: a factual or how-do-I question, reading or summarising a file, a rename, formatting, a one-line fix, running a command and reporting what it printed."
+    },
+    {
+      "name": "sonnet",
+      "id": "claude-sonnet-5-5",
+      "when": "Ordinary software work with a clear goal: building a well-specified feature or script, fixing a bug whose cause is known or easy to find, writing tests, refactoring within a few files, a routine review."
+    },
+    {
+      "name": "opus",
+      "id": "claude-opus-5-5",
+      "when": "Work where a mistake is costly or the path is unclear: designing an architecture, debugging something whose cause is unknown, a change that spans many files or systems, security-sensitive or data-migration work, subtle concurrency or performance problems, open-ended research or planning."
+    }
+  ],
+
+  "efforts": [
+    { "name": "low", "when": "The answer or edit is immediate; there is nothing to weigh or plan." },
+    { "name": "medium", "when": "A handful of steps carried out in an obvious order, with little to decide along the way." },
+    { "name": "high", "when": "Several interacting parts or trade-offs to think through before acting, or a cause that has to be investigated first." },
+    { "name": "xhigh", "when": "A hard, ambiguous or high-stakes problem where many possibilities must be explored and the result carefully verified." }
+  ]
+}
