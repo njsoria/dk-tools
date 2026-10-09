@@ -15,6 +15,7 @@ type Routes = {
   minConfidence: number
   timeoutMs: number
   stepDownUntilMessages: number
+  openPane?: boolean
   baseline?: { model: string; effort: Effort }
   pricing?: Record<string, Price>
   rules: { match: string; model: string; effort: Effort; why: string }[]
@@ -410,6 +411,14 @@ export const register: Register = on => {
 
     // A slow tick picks up routes other sessions wrote to the log.
     $.clock.every(3000, () => $.ui.invalidate('ui.render'))
+
+    // The pane opens with the session unless routes.json says `"openPane": false`.
+    // A pane that won't open must not stop the router from starting.
+    try {
+      if ((await load($)).openPane !== false) await $.ui.open({ id: PANE, title: 'Kore Router' })
+    } catch {
+      // `/router pane` still opens it by hand.
+    }
 
     return next(e)
   })

@@ -3,6 +3,7 @@
   "minConfidence": 0.5,
   "timeoutMs": 5000,
   "stepDownUntilMessages": 30,
+  "openPane": true,
 
   "baseline": { "model": "opus", "effort": "xhigh" },
 

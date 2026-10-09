@@ -19,8 +19,9 @@ own setting is untouched, and `/router off` hands it straight back.
 /plugin install kore-router@dk-tools
 ```
 
-Then start a new session. The router says it is on with a toast, and
-`router: on` appears in the status line.
+Then start a new session. The router says it is on with a toast, `router: on`
+appears in the status line, and the pane opens by itself (set `"openPane": false`
+in `routes.json` to stop that).
 
 ## How it picks
 
@@ -92,6 +93,7 @@ All of it is in [`routes.json`](routes.json).
 | `classifier` | `jev` or `haiku` |
 | `minConfidence` | Below this, take the more capable choice (0 to 1) |
 | `timeoutMs` | How long to wait for the classifier |
+| `openPane` | Open the pane when a session starts (`true`), or leave it to `/router pane` |
 | `stepDownUntilMessages` | Longest conversation the router will step down a tier in |
 | `baseline` | What `/router savings` compares against by default |
 | `pricing` | Dollars per million tokens, by model id |
