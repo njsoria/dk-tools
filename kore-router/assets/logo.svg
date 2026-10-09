@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Kore Router: one line in, three routes out, one chosen">
+  <title>Kore Router</title>
+  <rect width="512" height="512" fill="#121217"/>
+  <g fill="none" stroke="#f7f7f8" stroke-opacity="0.6" stroke-width="12" stroke-linejoin="miter">
+    <path d="M96 256H192"/>
+    <path d="M192 256H400"/>
+    <path d="M192 256V360H400"/>
+  </g>
+  <path d="M192 256V152H400" fill="none" stroke="#AADD00" stroke-width="12" stroke-linejoin="miter"/>
+  <circle cx="96" cy="256" r="24" fill="#f7f7f8"/>
+  <rect x="400" y="128" width="48" height="48" fill="#AADD00"/>
+  <rect x="400" y="232" width="48" height="48" fill="#f7f7f8" fill-opacity="0.6"/>
+  <rect x="400" y="336" width="48" height="48" fill="#f7f7f8" fill-opacity="0.6"/>
+</svg>
