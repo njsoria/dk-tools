@@ -34,6 +34,7 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
     e.path.endsWith('routes.json') ? { value: JSON.stringify(routes) } : { deny: 'no such file' },
   )
   on('session.messages', () => ({ value: [] }))
+  on('session.id', () => ({ value: 'this-session' }))
   on('fs.write', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('prompt.submit', ($, e) => ({ text: e.text }))

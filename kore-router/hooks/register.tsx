@@ -3,7 +3,8 @@
 // Rules in routes.json are tried first; what they don't settle goes to a cheap
 // classifier, Jev (TypeSafe) or Haiku. The route then rides on every model
 // request of the turn. `/router off` hands the session back to its own model;
-// `/router pane` opens a live view of the decisions.
+// `/router pane` opens a live view of the decisions; `/router savings` prices
+// what they saved against a model of your choice.
 
 import type { EngineInterface, Register, TurnStepInput } from 'claude-code'
 
@@ -14,9 +15,23 @@ type Routes = {
   minConfidence: number
   timeoutMs: number
   stepDownUntilMessages: number
+  baseline?: { model: string; effort: Effort }
+  pricing?: Record<string, Price>
   rules: { match: string; model: string; effort: Effort; why: string }[]
   models: { name: string; id: string; when: string }[]
   efforts: { name: Effort; when: string }[]
+}
+
+type Price = { input: number; output: number; cacheRead: number; cacheWrite: number }
+
+type Spend = {
+  at: string
+  sessionId: string
+  prompt: string
+  session: string
+  sessionEffort?: string
+  ran: string
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number }
 }
 
 type Route = { model: string; name: string; effort: Effort; via: string }
@@ -169,13 +184,79 @@ async function decide($: EngineInterface, routes: Routes, text: string): Promise
 async function record($: EngineInterface, entry: Record<string, unknown>) {
   const file = `${$.plugin.root}/routes.log.jsonl`
   const kept = (await $.fs.read(file).catch(() => '')).split('\n').filter(Boolean).slice(-199)
-  const line = JSON.stringify({ at: new Date(await $.clock.now()).toISOString(), ...entry })
+  const line = JSON.stringify({
+    at: new Date(await $.clock.now()).toISOString(),
+    sessionId: await $.session.id(),
+    ...entry,
+  })
   await $.fs.write(file, `${[...kept, line].join('\n')}\n`).catch(() => undefined)
   $.ui.invalidate('ui.render')
 }
 
+// What the router saved, kept apart from the pane's log: that one is capped at
+// 200 lines, this one grows, one line per routed turn, with its token counts.
+const SPEND = 'routes.spend.jsonl'
+
+async function recordSpend($: EngineInterface, spend: Omit<Spend, 'at' | 'sessionId'>) {
+  const file = `${$.plugin.root}/${SPEND}`
+  const kept = await $.fs.read(file).catch(() => '')
+  const line = JSON.stringify({
+    at: new Date(await $.clock.now()).toISOString(),
+    sessionId: await $.session.id(),
+    ...spend,
+  })
+  await $.fs.write(file, `${kept}${line}\n`).catch(() => undefined)
+}
+
+const cost = (price: Price, tokens: Spend['tokens']) =>
+  (tokens.input * price.input +
+    tokens.output * price.output +
+    tokens.cacheRead * price.cacheRead +
+    tokens.cacheWrite * price.cacheWrite) /
+  1_000_000
+
+const usd = (n: number) => `$${n.toFixed(2)}`
+
+// The same tokens, priced as if the turn had run on `against`: a model name
+// from routes.json, or `session` for whatever the session had selected.
+async function savings($: EngineInterface, routes: Routes, against: string | undefined) {
+  const pricing = routes.pricing ?? {}
+  const wanted = against ?? routes.baseline?.model ?? 'opus'
+  const isSession = wanted === 'session'
+  const baseModel = routes.models.find(model => model.name === wanted || model.id === wanted)
+  if (!isSession && baseModel === undefined) {
+    return `No model called "${wanted}". Try ${routes.models.map(model => model.name).join(', ')} or session.`
+  }
+
+  const text = await $.fs.read(`${$.plugin.root}/${SPEND}`).catch(() => '')
+  const turns = text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend)
+  let actual = 0
+  let compared = 0
+  let counted = 0
+  for (const turn of turns) {
+    const ranPrice = pricing[turn.ran]
+    const basePrice = pricing[isSession ? turn.session : baseModel!.id]
+    if (ranPrice === undefined || basePrice === undefined) continue
+    actual += cost(ranPrice, turn.tokens)
+    compared += cost(basePrice, turn.tokens)
+    counted += 1
+  }
+  if (counted === 0) return 'No routed turns with prices yet.'
+
+  const label = isSession ? 'the model you had selected' : `${baseModel!.name}${routes.baseline?.model === wanted ? ` · ${routes.baseline.effort}` : ''}`
+  const saved = compared - actual
+  const skipped = turns.length - counted
+  return [
+    `Against ${label}, since ${turns[0]!.at.slice(0, 10)}, over ${counted} turns:`,
+    `  router ${usd(actual)}  vs  ${usd(compared)}  →  saved ${usd(saved)} (${((saved / compared) * 100).toFixed(0)}%)`,
+    'Same tokens priced on both models; effort is not priced, only the model. A cheaper effort also thinks less, which this does not credit.',
+    ...(skipped > 0 ? [`${skipped} turns skipped for want of a price in routes.json.`] : []),
+  ].join('\n')
+}
+
 type Entry = {
   at: string
+  sessionId?: string
   prompt: string
   wanted?: string
   via?: string
@@ -185,15 +266,20 @@ type Entry = {
   messages?: number
 }
 
-// The newest decisions, newest first, from every session that shares the log.
+// The newest decisions of this session, newest first. Sessions share the log
+// file, so a new chat starts with an empty pane rather than another's routes.
 async function recent($: EngineInterface, count: number) {
-  const text = await $.fs.read(`${$.plugin.root}/routes.log.jsonl`).catch(() => '')
+  const [text, sessionId] = await Promise.all([
+    $.fs.read(`${$.plugin.root}/routes.log.jsonl`).catch(() => ''),
+    $.session.id(),
+  ])
   return text
     .split('\n')
     .filter(Boolean)
+    .map(line => JSON.parse(line) as Entry)
+    .filter(entry => entry.sessionId === sessionId)
     .slice(-count)
     .reverse()
-    .map(line => JSON.parse(line) as Entry)
 }
 
 const LIME = '#AADD00'
@@ -308,12 +394,14 @@ export const register: Register = on => {
   let lastModel: string | undefined
   let asked = ''
   const pinned = new Map<string, Pick<Route, 'model' | 'effort'> | undefined>()
+  // What a routed turn was set to and what it ran on, until its token counts arrive.
+  const open = new Map<string, Omit<Spend, 'at' | 'sessionId' | 'tokens'>>()
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'router',
       description: 'Model router: turn it on or off, or try a prompt against it',
-      argumentHint: '[on | off | pane | a prompt to try]',
+      argumentHint: '[on | off | pane | savings [model | session] | a prompt to try]',
     })
 
     // The router changes what a session runs on, so it says it is there.
@@ -418,7 +506,14 @@ export const register: Register = on => {
           ran: `${ran.model} · ${ran.effort}`,
           held: ran.model !== latest.model,
           session: e.model,
+          sessionEffort: e.effort,
           messages: e.messageCount,
+        })
+        open.set(e.turnId, {
+          prompt: asked,
+          session: e.model,
+          sessionEffort: typeof e.effort === 'string' ? e.effort : undefined,
+          ran: ran.model,
         })
       }
     }
@@ -428,8 +523,21 @@ export const register: Register = on => {
     return yield* next(route === undefined ? e : { ...e, ...route })
   })
 
-  on('turn.complete', ($, e, next) => {
+  on('turn.complete', async ($, e, next) => {
     pinned.delete(e.turnId)
+    const routed = open.get(e.turnId)
+    open.delete(e.turnId)
+    if (routed !== undefined && e.agentId === undefined && e.usage !== undefined) {
+      await recordSpend($, {
+        ...routed,
+        tokens: {
+          input: e.usage.input_tokens,
+          output: e.usage.output_tokens,
+          cacheRead: e.usage.cache_read_input_tokens,
+          cacheWrite: e.usage.cache_creation_input_tokens,
+        },
+      })
+    }
 
     return next(e)
   })
@@ -444,6 +552,13 @@ export const register: Register = on => {
     if (args === 'pane') {
       await $.ui.open({ id: PANE, title: 'Kore Router' })
       return { text: 'Router pane opened.' }
+    }
+    if (args === 'savings' || args.startsWith('savings ')) {
+      try {
+        return { text: await savings($, await load($), args.slice('savings'.length).trim() || undefined) }
+      } catch (error) {
+        return { text: `No figures: ${(error as Error).message}` }
+      }
     }
     if (args === '') {
       const last = latest === undefined ? '' : ` Last route: ${say(latest)}.`
