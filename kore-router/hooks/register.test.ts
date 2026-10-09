@@ -21,21 +21,33 @@ const ROUTES = {
   ],
 }
 
-type Classifier = { status?: number; answers?: unknown; haiku?: string; routes?: object }
+type Classifier = { status?: number; answers?: unknown; haiku?: string; routes?: object; files?: Record<string, string> }
 
 // The world beneath the router: its files, a quiet session, the classifier's
 // answer, and a model that records what each request asked for.
-function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES }: Classifier = {}) {
+function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES, files = {} }: Classifier = {}) {
   const sent: TurnStepInput[] = []
+  // Files by the end of their path, as the router left or will find them.
+  const find = (path: string) => Object.keys(files).find(name => path.endsWith(name))
   const asked = { jev: 0, haiku: 0 }
   mock.env(on, { TYPESAFE_API_KEY: 'test-key' })
   mock.clock(on)
-  on('fs.read', ($, e) =>
-    e.path.endsWith('routes.json') ? { value: JSON.stringify(routes) } : { deny: 'no such file' },
-  )
+  on('fs.read', ($, e) => {
+    if (e.path.endsWith('routes.json')) return { value: JSON.stringify(routes) }
+    const name = find(e.path)
+    return name === undefined ? { deny: 'no such file' } : { value: files[name]! }
+  })
+  on('fs.list', ($, e) => ({
+    value: Object.keys(files)
+      .filter(name => name.startsWith('logs/') && e.path.endsWith('logs'))
+      .map(name => ({ name: name.slice('logs/'.length), kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })),
+  }))
   on('session.messages', () => ({ value: [] }))
   on('session.id', () => ({ value: 'this-session' }))
-  on('fs.write', () => ({ value: undefined }))
+  on('fs.write', ($, e) => {
+    files[find(e.path) ?? e.path.slice(e.path.lastIndexOf('logs/'))] = e.text
+    return { value: undefined }
+  })
   on('ui.status', () => ({ value: undefined }))
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('http.fetch', () => {
@@ -51,7 +63,7 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
     sent.push(e)
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: null, usage: null }
   })
-  return { sent, asked }
+  return { sent, asked, files }
 }
 
 const jev = (choice: string, confidence: number, score: number, probabilities: Record<string, number> = { [choice]: 1 }) => ({
@@ -139,4 +151,32 @@ test('/router off hands the session back', async ($, on) => {
   await step($)
   expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
   expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+const run = ($: Engine, args: string) =>
+  $.command.run({ command: 'router', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+
+test('a session keeps every decision in a file of its own', async ($, on) => {
+  const { files } = world(on, { answers: jev('sonnet', 0.9, 1.2) })
+  for (let i = 0; i < 205; i++) await ask($, `add flag number ${i}`)
+  expect(Object.keys(files)).toEqual(['logs/this-session.routes.jsonl'])
+  expect(files['logs/this-session.routes.jsonl']!.trim().split('\n')).toHaveLength(205)
+})
+
+test('/router savings adds up every session', async ($, on) => {
+  const price = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 }
+  const turn = (sessionId: string, at: string) =>
+    `${JSON.stringify({ at, sessionId, prompt: 'p', session: 'claude-opus-5-5', ran: 'claude-haiku-5-5', tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 } })}\n`
+  world(on, {
+    routes: { ...ROUTES, pricing: { 'claude-haiku-5-5': price, 'claude-opus-5-5': { ...price, input: 5 } } },
+    files: {
+      'routes.spend.jsonl': turn('old', '2026-10-01T00:00:00.000Z'),
+      'logs/one.spend.jsonl': turn('one', '2026-10-02T00:00:00.000Z') + turn('one', '2026-10-03T00:00:00.000Z'),
+      'logs/two.spend.jsonl': turn('two', '2026-10-04T00:00:00.000Z'),
+      'logs/two.routes.jsonl': '{"at":"2026-10-04T00:00:00.000Z","prompt":"p"}\n',
+    },
+  })
+  const { text } = await run($, 'savings')
+  expect(text).toContain('since 2026-10-01, over 4 turns')
+  expect(text).toContain('router $4.00  vs  $20.00')
 })

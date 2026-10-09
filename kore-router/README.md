@@ -66,7 +66,7 @@ runs as the session set it. The router is never the reason a prompt fails.
 
 ## Savings
 
-Each routed turn adds a line to `routes.spend.jsonl` with the model and effort
+Each routed turn adds a line to its session's spend file with the model and effort
 you had selected, the model the router ran, and the turn's token counts.
 `/router savings` prices those same tokens on both models and reports the
 difference.
@@ -109,10 +109,14 @@ the jobs you'd send to each model.
 - `hooks/register.tsx`: the plugin.
 - `hooks/register.test.ts`: its tests.
 - `routes.json`: all configuration.
-- `routes.log.jsonl`: the last 200 decisions, shared by every session, which the
-  pane reads. Git-ignored.
-- `routes.spend.jsonl`: one line per routed turn, with tokens, for
-  `/router savings`. Git-ignored and never trimmed.
+- `logs/<session id>.routes.jsonl`: every decision of one session, which its
+  pane reads.
+- `logs/<session id>.spend.jsonl`: one line per routed turn of one session, with
+  tokens. `/router savings` adds up every session's file.
+
+Each session writes only its own files, so sessions running side by side can't
+overwrite each other. `logs/` is git-ignored and never trimmed. A
+`routes.spend.jsonl` left by an earlier version is still counted.
 
 ## License
 

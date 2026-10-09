@@ -180,33 +180,54 @@ async function decide($: EngineInterface, routes: Routes, text: string): Promise
   return routes.classifier === 'haiku' ? askHaiku($, routes, state) : askJev($, routes, state)
 }
 
-// Every decision is kept, newest last, for anything that wants to watch the
-// router work. $.fs has no append, so the file is rewritten at 200 lines.
+// Each session keeps its own two files under logs/, never trimmed: its
+// decisions, which the pane reads, and its spend, one line per routed turn with
+// token counts. $.fs has no append, so a file is read and rewritten; a file per
+// session means no session rewrites another's lines.
+const LOGS = 'logs'
+const DECISIONS = 'routes.jsonl'
+const SPEND = 'spend.jsonl'
+// The one spend file every session shared before each had its own.
+const OLD_SPEND = 'routes.spend.jsonl'
+
+const logFile = async ($: EngineInterface, kind: string) =>
+  `${$.plugin.root}/${LOGS}/${await $.session.id()}.${kind}`
+
+// One write at a time, so two of this session's lines can't rewrite each other.
+let writing: Promise<unknown> = Promise.resolve()
+
+function append($: EngineInterface, kind: string, entry: Record<string, unknown>) {
+  writing = writing
+    .then(async () => {
+      const file = await logFile($, kind)
+      const kept = await $.fs.read(file).catch(() => '')
+      const line = JSON.stringify({
+        at: new Date(await $.clock.now()).toISOString(),
+        sessionId: await $.session.id(),
+        ...entry,
+      })
+      await $.fs.write(file, `${kept}${line}\n`)
+    })
+    .catch(() => undefined)
+  return writing
+}
+
 async function record($: EngineInterface, entry: Record<string, unknown>) {
-  const file = `${$.plugin.root}/routes.log.jsonl`
-  const kept = (await $.fs.read(file).catch(() => '')).split('\n').filter(Boolean).slice(-199)
-  const line = JSON.stringify({
-    at: new Date(await $.clock.now()).toISOString(),
-    sessionId: await $.session.id(),
-    ...entry,
-  })
-  await $.fs.write(file, `${[...kept, line].join('\n')}\n`).catch(() => undefined)
+  await append($, DECISIONS, entry)
   $.ui.invalidate('ui.render')
 }
 
-// What the router saved, kept apart from the pane's log: that one is capped at
-// 200 lines, this one grows, one line per routed turn, with its token counts.
-const SPEND = 'routes.spend.jsonl'
+const recordSpend = ($: EngineInterface, spend: Omit<Spend, 'at' | 'sessionId'>) => append($, SPEND, spend)
 
-async function recordSpend($: EngineInterface, spend: Omit<Spend, 'at' | 'sessionId'>) {
-  const file = `${$.plugin.root}/${SPEND}`
-  const kept = await $.fs.read(file).catch(() => '')
-  const line = JSON.stringify({
-    at: new Date(await $.clock.now()).toISOString(),
-    sessionId: await $.session.id(),
-    ...spend,
-  })
-  await $.fs.write(file, `${kept}${line}\n`).catch(() => undefined)
+// Every routed turn of every session, oldest first.
+async function spent($: EngineInterface) {
+  const dir = `${$.plugin.root}/${LOGS}`
+  const names = (await $.fs.list(dir).catch(() => [])).map(entry => entry.name).filter(name => name.endsWith(`.${SPEND}`))
+  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...names.map(name => `${dir}/${name}`)]
+  const texts = await Promise.all(files.map(file => $.fs.read(file).catch(() => '')))
+  return texts
+    .flatMap(text => text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend))
+    .sort((a, b) => a.at.localeCompare(b.at))
 }
 
 const cost = (price: Price, tokens: Spend['tokens']) =>
@@ -229,8 +250,7 @@ async function savings($: EngineInterface, routes: Routes, against: string | und
     return `No model called "${wanted}". Try ${routes.models.map(model => model.name).join(', ')} or session.`
   }
 
-  const text = await $.fs.read(`${$.plugin.root}/${SPEND}`).catch(() => '')
-  const turns = text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend)
+  const turns = await spent($)
   let actual = 0
   let compared = 0
   let counted = 0
@@ -267,18 +287,14 @@ type Entry = {
   messages?: number
 }
 
-// The newest decisions of this session, newest first. Sessions share the log
-// file, so a new chat starts with an empty pane rather than another's routes.
+// The newest decisions of this session, newest first. A new chat has its own
+// file, so it starts with an empty pane rather than another's routes.
 async function recent($: EngineInterface, count: number) {
-  const [text, sessionId] = await Promise.all([
-    $.fs.read(`${$.plugin.root}/routes.log.jsonl`).catch(() => ''),
-    $.session.id(),
-  ])
+  const text = await $.fs.read(await logFile($, DECISIONS)).catch(() => '')
   return text
     .split('\n')
     .filter(Boolean)
     .map(line => JSON.parse(line) as Entry)
-    .filter(entry => entry.sessionId === sessionId)
     .slice(-count)
     .reverse()
 }
@@ -409,7 +425,7 @@ export const register: Register = on => {
     $.ui.toast('Kore Router is on. /router off to turn it off.')
     $.ui.status('router: on')
 
-    // A slow tick picks up routes other sessions wrote to the log.
+    // A slow tick keeps the pane current should a redraw be missed.
     $.clock.every(3000, () => $.ui.invalidate('ui.render'))
 
     // The pane opens with the session unless routes.json says `"openPane": false`.
