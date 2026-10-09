@@ -5,3 +5,4 @@ node_modules/
 .env
 kore-router/.claude-plugin/types/
 kore-router/routes.log.jsonl
+kore-router/routes.spend.jsonl

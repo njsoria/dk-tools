@@ -3,6 +3,16 @@
   "minConfidence": 0.5,
   "timeoutMs": 5000,
   "stepDownUntilMessages": 30,
+  "openPane": true,
+
+  "baseline": { "model": "opus", "effort": "xhigh" },
+
+  "_pricing": "USD per million tokens. Haiku's cache prices are assumed at 0.1x / 1.25x input and it ignores Haiku's higher rate above 100K prompt tokens; check the pricing page and edit.",
+  "pricing": {
+    "claude-haiku-5-5": { "input": 0.1, "output": 0.5, "cacheRead": 0.01, "cacheWrite": 0.125 },
+    "claude-sonnet-5-5": { "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 2.5 },
+    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 5 }
+  },
 
   "rules": [
     { "match": "\\bultrathink\\b", "model": "opus", "effort": "max", "why": "asked for maximum thinking" },
