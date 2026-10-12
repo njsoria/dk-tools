@@ -174,7 +174,7 @@ surfaces don't draw it yet.
 | --- | --- |
 | `/router` | Shows whether the router is on, the last route and any floor |
 | `/router on`, `/router off` | Turn it on, or hand the session back to its own model |
-| `/router pane` | Open the pane |
+| `/router pane`, `/router open` | Open the pane |
 | `/router floor <model>` | Never run below this model until `/router floor off` |
 | `/router floor off` | Lift your floor and any escalation |
 | `/router savings` | Price what the router saved against your baseline model |

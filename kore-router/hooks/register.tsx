@@ -219,7 +219,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'router',
       description: 'Model router: turn it on or off, set a floor, or try a prompt against it',
-      argumentHint: '[on | off | pane | floor <model> | floor off | savings [model | session] | a prompt to try]',
+      argumentHint: '[on | off | pane (or open) | floor <model> | floor off | savings [model | session] | a prompt to try]',
     })
 
     // The router changes what a session runs on, so it says it is there.
@@ -492,7 +492,8 @@ export const register: Register = on => {
       $.ui.invalidate('ui.render')
       return { text: `Router is ${args}.` }
     }
-    if (args === 'pane') {
+    // `open` too: the word people reach for.
+    if (args === 'pane' || args === 'open') {
       await $.ui.open({ id: PANE, title: 'Kore Router' })
       return { text: 'Router pane opened.' }
     }

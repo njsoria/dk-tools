@@ -397,3 +397,15 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(opened).toEqual(['router'])
   })
 }
+
+test('/router open opens the pane, as /router pane does', async ($, on) => {
+  world(on)
+  const opened: string[] = []
+  on('ui.open', ($, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  const { text } = await run($, 'open')
+  expect(text).toBe('Router pane opened.')
+  expect(opened).toEqual(['router'])
+})
