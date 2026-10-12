@@ -16,7 +16,7 @@ const ROUTES = {
   timeoutMs: 5000,
   pricing: PRICING,
   switching: { expectedSteps: 8, expectedOutput: 5000, cacheTtlMinutes: 60, margin: 1.5 },
-  guards: { pushback: "^\\W*(that'?s wrong|try again)", followUp: '^\\W*(yes|go ahead)[\\s,.!]*$', holdTurns: 2, toolErrors: 3 },
+  guards: { pushback: "^\\W*(that'?s wrong|try again)", followUp: '^\\W*(yes|go ahead)[\\s,.!]*$', shortWords: 2, holdTurns: 2, toolErrors: 3 },
   subagents: { classify: true, types: { Explore: 'lookup' } },
   rules: [
     { match: '\\bultrathink\\b', model: 'opus', effort: 'max', why: 'asked for maximum thinking' },
@@ -179,6 +179,23 @@ test('a short follow-up keeps the route in force without asking the classifier',
   await ask($, 'yes')
   expect(asked.jev).toBe(1)
   expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test('a prompt too short to classify keeps the route in force, still raised by an atLeast rule', async ($, on) => {
+  const { sent, asked } = world(on, { answers: jev('answer', 0.9, 0) })
+  await ask($, 'what does git stash pop do?')
+  await ask($, 'router pane')
+  await ask($, 'check prod')
+  expect(asked.jev).toBe(1)
+  expect(sent[1]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
+  expect(sent[2]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test('a short question is still classified', async ($, on) => {
+  const { asked } = world(on, { answers: jev('answer', 0.9, 0) })
+  await ask($, 'what does git stash pop do?')
+  await ask($, 'why flaky?')
+  expect(asked.jev).toBe(2)
 })
 
 test('a failed classifier leaves the request as the session set it', async ($, on) => {
@@ -351,6 +368,25 @@ test('/router savings adds up every session', async ($, on) => {
   expect(text).toContain('router $4.00  vs  $20.00')
   expect(text).toContain('ran on: haiku 4 ($4.00)')
 })
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a collapsed row shows only the first line of its prompt (${surface})`, async ($, on) => {
+    world(on, { answers: jev('build', 0.9, 1.2) })
+    await ask($, 'add a --json flag\nyes since it hits a zoho line\nyes they should be turned off')
+    const pane = await $.ui.mount({
+      plugin: 'kore-router',
+      surface,
+      component: 'Pane',
+      requestId: 'router',
+      props: { title: 'Kore Router', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+    })
+    expect(await pane.find({ text: 'add a --json flag' })).toBeDefined()
+    expect(await pane.find({ text: /zoho/ })).toBeUndefined()
+    const [toggle] = await pane.findAll({ type: 'Button', text: /sonnet · medium/ })
+    await pane.press({ key: toggle!.key! })
+    expect(await pane.find({ text: /zoho/ })).toBeDefined()
+  })
+}
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`the pane's rows open to every field and close again (${surface})`, async ($, on) => {

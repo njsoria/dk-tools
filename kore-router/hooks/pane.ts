@@ -5,6 +5,9 @@ import type { Entry } from './ledger'
 
 export const LIME = '#AADD00'
 
+// A collapsed row shows only where a prompt starts; opening it shows all of it.
+export const firstLine = (text: string) => text.split('\n').find(line => line.trim() !== '')?.trim() ?? ''
+
 export const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 
 // "claude-opus-5-5 · medium" as its two parts, the model by its family name.

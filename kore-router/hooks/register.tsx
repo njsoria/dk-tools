@@ -17,9 +17,9 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
 import { type Effort, type Routes, check, model, tier } from './config'
-import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, routeTask, settle } from './decide'
+import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, isThin, keepRoute, routeTask, settle } from './decide'
 import { type Entry, type Spend, savings } from './ledger'
-import { LIME, details, summary } from './pane'
+import { LIME, details, firstLine, summary } from './pane'
 
 const PANE = 'router'
 // How many of this session's decisions the pane lists, newest first.
@@ -99,7 +99,10 @@ async function decide($: EngineInterface, routes: Routes, text: string, rows: Ro
   if (decided !== undefined) return decided
   const followUp = routes.guards?.followUp
   if (previous !== undefined && followUp !== undefined && new RegExp(followUp, 'i').test(clean(text))) {
-    return { ...previous, via: `a follow-up, so the route in force (${previous.via})` }
+    return keepRoute(routes, previous, raises, 'a follow-up, so the route in force')
+  }
+  if (previous !== undefined && rows.length > 0 && isThin(routes, text)) {
+    return keepRoute(routes, previous, raises, 'too short to classify, so the route in force')
   }
   const started = await $.clock.now()
   const verdict = routes.classifier === 'haiku' ? await askHaiku($, routes, text, rows) : await askJev($, routes, text, rows)
@@ -275,7 +278,7 @@ export const register: Register = on => {
               )}
               {!isOpen && (
                 <Text dimColor wrap="truncate-end">
-                  {row.prompt}
+                  {firstLine(row.prompt)}
                 </Text>
               )}
               {isOpen &&

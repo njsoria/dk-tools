@@ -60,6 +60,18 @@ export function byRules(routes: Routes, text: string) {
   return { decided: decider === undefined ? undefined : ruled(routes, decider), raises: matches }
 }
 
+// The route in force carried on to a thin prompt, still raised by any
+// `atLeast` rule the text matched.
+export const keepRoute = (routes: Routes, previous: Route, raises: Rule[], why: string): Route =>
+  raises.reduce((best, rule) => atLeast(routes, best, ruled(routes, rule)), { ...previous, via: `${why} (${previous.via})` })
+
+// Too few words, and no question, to say what job it is.
+export const isThin = (routes: Routes, text: string) => {
+  const said = clean(text)
+  const max = routes.guards?.shortWords ?? 2
+  return said !== '' && !said.includes('?') && said.split(/\s+/).length <= max
+}
+
 // The classifier's task, never run below its own model and effort, nor below
 // any `atLeast` rule the text matched.
 export const fromVerdict = (routes: Routes, verdict: Verdict, raises: Rule[]) =>

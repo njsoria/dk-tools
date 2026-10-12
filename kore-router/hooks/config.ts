@@ -47,6 +47,9 @@ export type Routes = {
     // A prompt this matches whole ("yes, go ahead") continues the job under
     // way on the route in force, with no classifier call.
     followUp?: string
+    // A prompt of this many words or fewer, with no question mark, is too thin
+    // to classify ("router pane"): it keeps the route in force. Default 2; 0 turns it off.
+    shortWords?: number
     // How many of the person's turns an escalation holds for.
     holdTurns?: number
     // Tool errors in one turn, below the top model, before it moves up a tier.

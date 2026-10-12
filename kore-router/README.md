@@ -55,7 +55,9 @@ claude --plugin-dir path/to/kore-router
    concurrency never runs below Opus at high effort.
 2. **A short follow-up keeps the route in force.** "yes", "go ahead",
    "continue" and the like carry on the job under way, so no classifier call
-   is made.
+   is made. So does a prompt of two words or fewer with no question mark
+   (`guards.shortWords`), which is too thin to classify; an `atLeast` rule
+   still raises it.
 3. **Otherwise a classifier names the task.** It reads the prompt and the last
    few lines of the conversation (so "ok, do it" is judged by the job under
    way) against the `when` of each task: `answer`, `lookup`, `mechanical`,
@@ -157,8 +159,8 @@ models under it. The one exception is a struggling turn, as above.
 
 The pane lists this session's last 30 decisions, newest first, one line each:
 the time, the model and effort the turn ran on, and marks for a subagent, a
-hold or a guard that changed the route (`*`). Click a line (or focus it and
-press Enter) to open it and see everything the router logged for it: the full
+hold or a guard that changed the route (`*`). A collapsed row shows the first line of the prompt. Click a line (or focus it
+and press Enter) to open it and see everything the router logged for it: the full
 prompt, what the classifier asked for, what ran, why, what the session had
 selected, the message count and how long routing took. **Open all** and
 **Close all** do every row at once.
@@ -251,7 +253,7 @@ All of it is in [`routes.json`](routes.json).
 | `baseline` | What `/router savings` compares against by default |
 | `pricing` | Dollars per million tokens, by model id, with an optional `longContext` rate above a token count |
 | `switching` | `expectedSteps`, `expectedOutput`, `cacheTtlMinutes`, `margin`, `fallbackMessages`: when a step down pays |
-| `guards` | `pushback` and `followUp` (regexes), `holdTurns`, `toolErrors` |
+| `guards` | `pushback` and `followUp` (regexes), `shortWords`, `holdTurns`, `toolErrors` |
 | `subagents` | `classify` (other types), and `types`: agent type to task |
 | `rules` | `match` (regex), then a `task` or a `model` and `effort`, a `why`, and `atLeast` to raise rather than decide |
 | `tasks` | `name`, the least `model` and `effort` it runs on, and a `when` the classifier reads |
@@ -269,7 +271,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 31 tests that read as the router's
+runs `hooks/register.test.ts`, 36 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
