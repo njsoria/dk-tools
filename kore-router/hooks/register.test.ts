@@ -373,3 +373,27 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.find({ text: 'Decided by:' })).toBeUndefined()
   })
 }
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`clicking the router's line under the prompt opens its pane (${surface})`, async ($, on) => {
+    world(on, { answers: jev('build', 0.9, 1.2) })
+    const opened: string[] = []
+    on('ui.open', ($, e) => {
+      opened.push(e.id)
+      return { value: { isPlaced: true as const } }
+    })
+    // The engine's own hint line, which the router's sits beside.
+    on('ui.render', { component: 'PromptHint' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.hint }))
+    await ask($, 'add a --json flag')
+    const hint = await $.ui.mount({
+      plugin: 'kore-router',
+      surface,
+      component: 'PromptHint',
+      props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+    })
+    expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: sonnet · medium' })
+    expect(await hint.find({ text: '? for shortcuts' })).toBeDefined()
+    await hint.press({ key: 'router-line' })
+    expect(opened).toEqual(['router'])
+  })
+}

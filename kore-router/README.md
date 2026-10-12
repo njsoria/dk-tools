@@ -25,7 +25,7 @@ has, so the IDE extensions should show it too, though that is untested.
 ```
 
 Then start a new session. The router says it is on with a toast, `router: on`
-appears in the status line, and its pane opens by itself (set
+appears in the line under the prompt, and its pane opens by itself (set
 `"openPane": false` in `routes.json` to stop that).
 
 To classify with Jev (the default), add a TypeSafe API key, either to the
@@ -161,8 +161,12 @@ hold or a guard that changed the route (`*`). Click a line (or focus it and
 press Enter) to open it and see everything the router logged for it: the full
 prompt, what the classifier asked for, what ran, why, what the session had
 selected, the message count and how long routing took. **Open all** and
-**Close all** do every row at once. `/router pane` reopens the pane if you
-closed it.
+**Close all** do every row at once.
+
+The line under the prompt shows the route in force (`router: sonnet · medium`,
+with the reason when a guard changed it). Click it to open the pane, or run
+`/router pane`. That line is drawn in the CLI and the desktop app; other
+surfaces don't draw it yet.
 
 ## Commands
 
@@ -265,7 +269,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 29 tests that read as the router's
+runs `hooks/register.test.ts`, 31 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and

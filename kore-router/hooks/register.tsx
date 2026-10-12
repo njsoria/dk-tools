@@ -187,6 +187,8 @@ export const register: Register = on => {
   let chosen: Floor | undefined
   let floor: Floor | undefined
   let asked = ''
+  // The router's line under the prompt, which opens its pane when clicked.
+  let line: string | undefined
   // The conversation's last few lines, kept as they pass so routing never has
   // to read the whole transcript; read once only for a resumed session.
   const tail: { role: string; text: string }[] = []
@@ -222,7 +224,7 @@ export const register: Register = on => {
 
     // The router changes what a session runs on, so it says it is there.
     $.ui.toast('Kore Router is on. /router off to turn it off.')
-    $.ui.status('router: on')
+    line = 'router: on'
 
     // A slow tick keeps the pane current should a redraw be missed.
     $.clock.every(3000, () => $.ui.invalidate('ui.render'))
@@ -290,6 +292,23 @@ export const register: Register = on => {
     )
   })
 
+  // The line under the prompt keeps the engine's own hints and adds the
+  // router's route, as a button that opens the pane.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    if (line === undefined) return next(e)
+    const { Box, Button } = $.ui.resolve(e)
+    const open = () => {
+      void $.ui.open({ id: PANE, title: 'Kore Router', focus: true })
+    }
+
+    return (
+      <Box columnGap={2}>
+        {await next(e)}
+        <Button key="router-line" plain dimColor label={line} onPress={open} />
+      </Box>
+    )
+  })
+
   on('prompt.submit', async ($, e, next) => {
     if (isOn && FROM_A_PERSON.has(e.origin.kind)) {
       asked = clip(clean(e.text), 2000)
@@ -314,7 +333,8 @@ export const register: Register = on => {
       } catch (error) {
         // Routing must never be why a prompt fails: the last route stands, or
         // the session's own model when there has been none.
-        $.ui.status(`router: no new route (${(error as Error).message})`)
+        line = `router: no new route (${(error as Error).message})`
+        $.ui.invalidate('ui.render')
         await record($, { prompt: asked, failed: (error as Error).message })
       }
       remember('user', e.text)
@@ -427,7 +447,11 @@ export const register: Register = on => {
     const route = pinned.get(e.turnId)
     lastModel = route?.model ?? e.model
     steps.set(e.turnId, e.index + 1)
-    if (route !== undefined) $.ui.status(`router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`)
+    const said = route === undefined ? line : `router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`
+    if (said !== line) {
+      line = said
+      $.ui.invalidate('ui.render')
+    }
 
     const result = yield* next(route === undefined ? e : { ...e, model: route.model, effort: route.effort })
     if (result.usage !== null) {
@@ -464,7 +488,8 @@ export const register: Register = on => {
     const args = e.args.trim()
     if (args === 'on' || args === 'off') {
       isOn = args === 'on'
-      if (!isOn) $.ui.status(undefined)
+      line = isOn ? 'router: on' : undefined
+      $.ui.invalidate('ui.render')
       return { text: `Router is ${args}.` }
     }
     if (args === 'pane') {
