@@ -1,0 +1,398 @@
+{
+  "_": "Prompts a coding session sees, each labelled with the task it should route to. `also` lists other tasks a careful person could accept. `earlier` is the conversation before the prompt, oldest first. Cases marked `hard` are deliberately ambiguous or misleading: a debugging job phrased as a question, a risky change phrased as a quick one.",
+  "cases": [
+    {
+      "prompt": "what does git stash pop do?",
+      "task": "answer"
+    },
+    {
+      "prompt": "what's the difference between a mutex and a semaphore?",
+      "task": "answer"
+    },
+    {
+      "prompt": "how do I list the ports that are listening on macOS?",
+      "task": "answer"
+    },
+    {
+      "prompt": "what does this error mean: ECONNREFUSED 127.0.0.1:5432",
+      "task": "answer",
+      "also": [
+        "debug"
+      ]
+    },
+    {
+      "prompt": "is Array.prototype.sort stable in V8?",
+      "task": "answer"
+    },
+    {
+      "prompt": "find where we read the session id in the router",
+      "task": "lookup"
+    },
+    {
+      "prompt": "summarise what hooks/register.tsx does",
+      "task": "lookup",
+      "also": [
+        "answer"
+      ]
+    },
+    {
+      "prompt": "run the test suite and tell me what fails",
+      "task": "lookup"
+    },
+    {
+      "prompt": "list every TODO comment under src/",
+      "task": "lookup"
+    },
+    {
+      "prompt": "show me how the savings figure is worked out in ledger.ts",
+      "task": "lookup",
+      "also": [
+        "answer"
+      ]
+    },
+    {
+      "prompt": "rename `asked` to `prompt` in register.tsx",
+      "task": "mechanical"
+    },
+    {
+      "prompt": "fix the typo 'recieve' in the README",
+      "task": "mechanical"
+    },
+    {
+      "prompt": "bump the plugin version to 0.2.1",
+      "task": "mechanical"
+    },
+    {
+      "prompt": "reformat routes.json with two-space indentation",
+      "task": "mechanical"
+    },
+    {
+      "prompt": "change the default timeoutMs from 5000 to 3000",
+      "task": "mechanical"
+    },
+    {
+      "prompt": "add a --json flag to the export command",
+      "task": "build"
+    },
+    {
+      "prompt": "write unit tests for the clip() helper",
+      "task": "build"
+    },
+    {
+      "prompt": "add a /router stats command that prints how many prompts went to each model",
+      "task": "build"
+    },
+    {
+      "prompt": "the pane crashes when the log is empty because rows[0] is undefined; guard against it",
+      "task": "build",
+      "also": [
+        "mechanical"
+      ]
+    },
+    {
+      "prompt": "write a commit message for the staged changes",
+      "task": "build",
+      "also": [
+        "answer",
+        "lookup"
+      ]
+    },
+    {
+      "prompt": "refactor the three log writers in register.tsx to share one helper",
+      "task": "build"
+    },
+    {
+      "prompt": "review this diff before I merge it",
+      "task": "review"
+    },
+    {
+      "prompt": "check that the new pushback regex doesn't match ordinary prompts",
+      "task": "review",
+      "also": [
+        "build"
+      ]
+    },
+    {
+      "prompt": "does my test actually cover the case where the classifier times out?",
+      "task": "review"
+    },
+    {
+      "prompt": "read over the README and tell me if anything is out of date",
+      "task": "review",
+      "also": [
+        "lookup"
+      ]
+    },
+    {
+      "prompt": "the checkout test fails about one run in ten and I can't see why",
+      "task": "debug"
+    },
+    {
+      "prompt": "since yesterday the router sends everything to opus; figure out what changed",
+      "task": "debug"
+    },
+    {
+      "prompt": "memory climbs steadily in the worker until it's OOM-killed after a few hours",
+      "task": "debug"
+    },
+    {
+      "prompt": "the pane shows the wrong time in the desktop app but the right one in the terminal",
+      "task": "debug"
+    },
+    {
+      "prompt": "API latency doubled after the last deploy, find out why",
+      "task": "debug",
+      "also": [
+        "risky"
+      ]
+    },
+    {
+      "prompt": "how should we structure the router so subagents and the main loop share one decision path?",
+      "task": "design"
+    },
+    {
+      "prompt": "compare SQLite and Postgres for storing the plugin's logs and recommend one",
+      "task": "design"
+    },
+    {
+      "prompt": "design a caching layer for the classifier's answers",
+      "task": "design"
+    },
+    {
+      "prompt": "plan how to move the build from webpack to vite",
+      "task": "design"
+    },
+    {
+      "prompt": "lay out a plan to split billing out of the monolith into its own service",
+      "task": "design",
+      "also": [
+        "risky"
+      ]
+    },
+    {
+      "prompt": "rotate the TypeSafe API key and update every place it's stored",
+      "task": "risky"
+    },
+    {
+      "prompt": "write the migration that drops the legacy users table",
+      "task": "risky"
+    },
+    {
+      "prompt": "fix the race condition in the job queue's dequeue",
+      "task": "risky",
+      "also": [
+        "debug"
+      ]
+    },
+    {
+      "prompt": "make our OAuth callback validate the state parameter",
+      "task": "risky"
+    },
+    {
+      "prompt": "push this hotfix to production",
+      "task": "risky"
+    },
+    {
+      "prompt": "ok do it",
+      "task": "build",
+      "also": [
+        "design"
+      ],
+      "earlier": [
+        {
+          "from": "user",
+          "text": "plan how the exporter should page through results"
+        },
+        {
+          "from": "assistant",
+          "text": "Plan: switch the exporter to cursor-based paging. 1) add a `cursor` param to fetchPage, 2) loop until the API returns no cursor, 3) stream each page to the writer, 4) add a test with three fake pages."
+        }
+      ]
+    },
+    {
+      "prompt": "keep going",
+      "task": "debug",
+      "earlier": [
+        {
+          "from": "user",
+          "text": "the checkout test fails about one run in ten and I can't see why"
+        },
+        {
+          "from": "assistant",
+          "text": "Two candidates so far: the tests share a temp directory, and the clock mock isn't reset between cases. I've ruled out the network stub. Next I'll run the suite with a fixed seed to see which one it is."
+        }
+      ]
+    },
+    {
+      "prompt": "and git stash apply?",
+      "task": "answer",
+      "earlier": [
+        {
+          "from": "user",
+          "text": "what does git stash pop do?"
+        },
+        {
+          "from": "assistant",
+          "text": "It applies the newest stash to your working tree and then drops it from the stash list."
+        }
+      ]
+    },
+    {
+      "prompt": "that's still wrong, the totals are off by one",
+      "task": "debug",
+      "also": [
+        "build"
+      ],
+      "earlier": [
+        {
+          "from": "user",
+          "text": "add a totals row to the CSV export"
+        },
+        {
+          "from": "assistant",
+          "text": "Added a totals row that sums each numeric column after the last data row."
+        }
+      ]
+    },
+    {
+      "prompt": "quick question: why do our auth tokens expire after five minutes instead of an hour?",
+      "task": "risky",
+      "also": [
+        "debug"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "just quickly fix the flaky checkout test",
+      "task": "debug",
+      "hard": true
+    },
+    {
+      "prompt": "why is this test flaky?",
+      "task": "debug",
+      "hard": true
+    },
+    {
+      "prompt": "TypeError: Cannot read properties of undefined (reading 'map')\n    at renderRows (src/pane.ts:42:18)\n    at draw (src/pane.ts:12:3)\n    at async Pane (src/register.tsx:88:5)",
+      "task": "build",
+      "also": [
+        "debug"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "can you add a --dry-run flag, and while you're in there figure out why the export sometimes writes duplicate rows?",
+      "task": "debug",
+      "also": [
+        "build"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "tidy up this function a bit",
+      "task": "build",
+      "also": [
+        "mechanical"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "delete the logs folder",
+      "task": "mechanical",
+      "also": [
+        "risky"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "delete all rows older than 30 days from the events table in prod",
+      "task": "risky",
+      "hard": true
+    },
+    {
+      "prompt": "is it safe to store the refresh token in localStorage?",
+      "task": "risky",
+      "also": [
+        "answer",
+        "design"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "explain how our retry logic works and whether it can double-charge a customer",
+      "task": "risky",
+      "also": [
+        "review",
+        "debug"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "write a README for this plugin",
+      "task": "build",
+      "also": [
+        "lookup"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "update the dependencies",
+      "task": "build",
+      "also": [
+        "mechanical",
+        "risky"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "make it faster",
+      "task": "debug",
+      "also": [
+        "design"
+      ],
+      "hard": true,
+      "earlier": [
+        {
+          "from": "user",
+          "text": "the export of 2M rows takes 40 minutes"
+        },
+        {
+          "from": "assistant",
+          "text": "It fetches one page at a time and writes each row with a separate fs call. I can profile it if you'd like."
+        }
+      ]
+    },
+    {
+      "prompt": "hmm, no",
+      "task": "debug",
+      "also": [
+        "design",
+        "build"
+      ],
+      "hard": true,
+      "earlier": [
+        {
+          "from": "user",
+          "text": "the checkout test fails about one run in ten and I can't see why"
+        },
+        {
+          "from": "assistant",
+          "text": "It's the shared temp directory: I've given each test its own and it passed 50 runs in a row."
+        }
+      ]
+    },
+    {
+      "prompt": "what would it take to support Windows?",
+      "task": "design",
+      "also": [
+        "lookup"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "look at the failing CI run and fix whatever broke",
+      "task": "debug",
+      "hard": true
+    }
+  ]
+}

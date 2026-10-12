@@ -2,10 +2,20 @@
 
 Small tools for day-to-day work at DevKore. Each folder stands alone.
 
-The new-tab dashboard, Kore Bridge and Kore Catch-up moved to their own repo,
-DK.kDash (`~/dev/DK.kDash`).
+## Tools
 
-## Branching
+| Tool | What it is |
+| --- | --- |
+| [Kore Router](kore-router) | A Claude Code plugin that sends each prompt and each subagent to the model and effort its job deserves, with guards that raise a turn when quality is at risk |
+
+The repository is also a Claude Code plugin marketplace:
+
+```bash
+/plugin marketplace add njsoria/dk-tools
+/plugin install kore-router@dk-tools
+```
+
+## Contributing
 
 ```text
 nate/feature/* ──┐
@@ -25,3 +35,7 @@ nate/bug/*     ──┘
 2. Commit using [Conventional Commits](https://www.conventionalcommits.org/).
 3. Open a PR into `develop` (never directly to `main`).
 4. `.github/workflows/sync-main.yml` then moves `main` to the same commit.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

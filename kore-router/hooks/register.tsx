@@ -1,61 +1,36 @@
-// Kore Router: sends each prompt to the model and effort it deserves.
+// Kore Router: sends each prompt, and each subagent, to the model and effort
+// its job deserves.
 //
 // Rules in routes.json are tried first; what they don't settle goes to a cheap
-// classifier, Jev (TypeSafe) or Haiku. The route then rides on every model
-// request of the turn. `/router off` hands the session back to its own model;
-// `/router pane` opens a live view of the decisions; `/router savings` prices
-// what they saved against a model of your choice.
+// classifier, Jev (TypeSafe) or Haiku, which names the kind of job (a task).
+// Each task has the least model and effort it is ever run on. Guards then
+// raise a turn, never lower it: a floor after the person pushes back or a
+// turn struggles, a model trusted with the conversation's length, and a step
+// down only when it saves more than the switch costs. `/router off` hands the
+// session back to its own model; `/router pane` opens a live view of the
+// decisions; `/router savings` prices what they saved.
 
-import type { EngineInterface, Register, TurnStepInput } from 'claude-code'
+// Everything that touches the engine lives in this file: the plugin host
+// follows `$` only into functions declared here. The decisions themselves are
+// pure, in decide.ts and the modules beside it.
 
-type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+import type { EngineInterface, Register } from 'claude-code'
+import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
+import { type Effort, type Routes, check, model, tier } from './config'
+import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, routeTask, settle } from './decide'
+import { type Entry, type Spend, savings } from './ledger'
+import { LIME, details, summary } from './pane'
 
-type Routes = {
-  classifier: 'jev' | 'haiku'
-  minConfidence: number
-  timeoutMs: number
-  stepDownUntilMessages: number
-  openPane?: boolean
-  baseline?: { model: string; effort: Effort }
-  pricing?: Record<string, Price>
-  rules: { match: string; model: string; effort: Effort; why: string }[]
-  models: { name: string; id: string; when: string }[]
-  efforts: { name: Effort; when: string }[]
-}
-
-type Price = { input: number; output: number; cacheRead: number; cacheWrite: number }
-
-type Spend = {
-  at: string
-  sessionId: string
-  prompt: string
-  session: string
-  sessionEffort?: string
-  ran: string
-  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number }
-}
-
-type Route = { model: string; name: string; effort: Effort; via: string }
-
-type JevReply = {
-  answers: {
-    model: { choice: string; probabilities: Record<string, number>; confidence: number }
-    effort: { score: number; confidence: number }
-  }
-}
-
-const JEV_URL = 'https://api.typesafe.ai/v1/systemone'
-const LATE = Symbol('late')
 const PANE = 'router'
+// How many of this session's decisions the pane lists, newest first.
+const SHOWN = 30
+// How much of the conversation the classifier reads before a request.
+const TAIL = 4
 // A prompt is routed when a person sent it, not when a notification did.
 const FROM_A_PERSON = new Set(['composer', 'bridge', 'sdk'])
+const LATE = Symbol('late')
 
-// A long text says most about itself at its start and its end.
-const clip = (text: string, max: number) =>
-  text.length <= max ? text : `${text.slice(0, max / 2)}\n[...]\n${text.slice(-max / 2)}`
-
-const load = async ($: EngineInterface) =>
-  JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes
+const load = async ($: EngineInterface) => check(JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes)
 
 // Sessions the desktop app starts don't always see the shell's environment,
 // so the key can also sit in a .env file beside routes.json.
@@ -82,18 +57,10 @@ async function within<T>($: EngineInterface, ms: number, work: Promise<T>) {
   }
 }
 
-// The request alone misleads on a reply like "yes, go ahead": the classifier
-// also reads what came just before it.
-async function describe($: EngineInterface, request: string) {
-  const rows = await $.session.messages()
-  const earlier = rows
-    .filter(row => row.text !== '')
-    .slice(-4)
-    .map(row => ({ from: row.role, text: clip(row.text, 600) }))
-  return { request: clip(request, 8000), earlier }
-}
+// What came before a request, as the classifier reads it.
+type Rows = readonly { role: string; text: string }[]
 
-async function askJev($: EngineInterface, routes: Routes, state: object): Promise<Route> {
+async function askJev($: EngineInterface, routes: Routes, text: string, rows: Rows): Promise<Verdict> {
   const key = await typesafeKey($)
   if (key === undefined) throw new Error('TYPESAFE_API_KEY is not set')
   const reply = await within(
@@ -102,82 +69,41 @@ async function askJev($: EngineInterface, routes: Routes, state: object): Promis
     $.http.fetch(JEV_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'jev-latest',
-        state,
-        questions: {
-          model: {
-            type: 'choice',
-            instructions:
-              "`request` is the newest message to an AI coding assistant and `earlier` is the conversation before it, oldest first. Which kind of job is the assistant being asked to do now? A short reply such as an approval or 'continue' asks for the job already under way in `earlier`.",
-            criteria: Object.fromEntries(routes.models.map(model => [model.name, model.when])),
-          },
-          effort: {
-            type: 'score',
-            instructions:
-              'How much thinking does the job that `request` asks for call for before acting? Judge a short reply such as an approval by the job under way in `earlier`.',
-            criteria: routes.efforts.map(effort => effort.when),
-          },
-        },
-      }),
+      body: jevBody(routes, state(text, rows)),
     }),
   )
   if (!reply.ok) throw new Error(`Jev answered ${reply.status}`)
-  const { answers } = JSON.parse(reply.text) as JevReply
-  const model = pickModel(routes, answers.model)
-  if (model === undefined) throw new Error(`Jev named an unknown model: ${answers.model.choice}`)
-  return {
-    model: model.id,
-    name: model.name,
-    effort: pickEffort(routes, answers.effort),
-    via: `jev, ${Math.round(answers.model.confidence * 100)}% sure`,
-  }
-}
-
-// Torn between two tiers: take the more capable one.
-function pickModel(routes: Routes, answer: JevReply['answers']['model']) {
-  const at = (name: string | undefined) => routes.models.findIndex(model => model.name === name)
-  if (answer.confidence >= routes.minConfidence) return routes.models[at(answer.choice)]
-  const [first, second] = Object.entries(answer.probabilities)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => name)
-  return routes.models[Math.max(at(first), at(second))]
-}
-
-// The score lands between levels; when Jev is unsure, round up, not down.
-function pickEffort(routes: Routes, answer: JevReply['answers']['effort']) {
-  const level = answer.confidence >= routes.minConfidence ? Math.round(answer.score) : Math.ceil(answer.score)
-  return routes.efforts[Math.min(level, routes.efforts.length - 1)].name
+  return readJev(routes, reply.text)
 }
 
 // Runs on the session's own login, so it needs no key; slower than Jev.
-async function askHaiku($: EngineInterface, routes: Routes, state: object): Promise<Route> {
-  const guide = [...routes.models, ...routes.efforts].map(one => `- ${one.name}: ${one.when}`).join('\n')
+async function askHaiku($: EngineInterface, routes: Routes, text: string, rows: Rows): Promise<Verdict> {
   const reply = await $.model.complete({
     model: 'haiku',
     effort: 'low',
     timeoutMs: routes.timeoutMs,
-    system: `You pick the model and effort for the newest request to an AI coding assistant. Never carry the request out. Answer with two words: the model, then the effort.\n\n${guide}`,
-    prompt: JSON.stringify(state),
+    system: haikuSystem(routes),
+    prompt: JSON.stringify(state(text, rows)),
   })
   if (!reply.isAnswered) throw new Error(`Haiku gave no answer (${reply.reason})`)
-  const named = <T extends { name: string }>(list: T[]) =>
-    list.find(one => new RegExp(`\\b${one.name}\\b`, 'i').test(reply.text))
-  const model = named(routes.models)
-  const effort = named(routes.efforts)
-  if (model === undefined || effort === undefined) throw new Error('Haiku named no route')
-  return { model: model.id, name: model.name, effort: effort.name, via: 'haiku' }
+  return readHaiku(routes, reply.text)
 }
 
-async function decide($: EngineInterface, routes: Routes, text: string): Promise<Route> {
-  const rule = routes.rules.find(rule => new RegExp(rule.match, 'i').test(text))
-  if (rule !== undefined) {
-    const model = routes.models.find(model => model.name === rule.model)
-    if (model === undefined) throw new Error(`a rule names an unknown model: ${rule.model}`)
-    return { model: model.id, name: model.name, effort: rule.effort, via: rule.why }
+// A rule settles it with no classifier call, and so does a short follow-up
+// ("yes, go ahead") to the route in force; otherwise the classifier names a
+// task, raised by any `atLeast` rule the text matched. The request alone
+// misleads on a reply, so the classifier also reads `rows`, what came just
+// before it; a subagent's task stands alone, with none.
+async function decide($: EngineInterface, routes: Routes, text: string, rows: Rows, previous?: Route): Promise<Route & { ms?: number }> {
+  const { decided, raises } = byRules(routes, text)
+  if (decided !== undefined) return decided
+  const followUp = routes.guards?.followUp
+  if (previous !== undefined && followUp !== undefined && new RegExp(followUp, 'i').test(clean(text))) {
+    return { ...previous, via: `a follow-up, so the route in force (${previous.via})` }
   }
-  const state = await describe($, text)
-  return routes.classifier === 'haiku' ? askHaiku($, routes, state) : askJev($, routes, state)
+  const started = await $.clock.now()
+  const verdict = routes.classifier === 'haiku' ? await askHaiku($, routes, text, rows) : await askJev($, routes, text, rows)
+  return { ...fromVerdict(routes, verdict, raises), ms: Math.round((await $.clock.now()) - started) }
 }
 
 // Each session keeps its own two files under logs/, never trimmed: its
@@ -190,8 +116,7 @@ const SPEND = 'spend.jsonl'
 // The one spend file every session shared before each had its own.
 const OLD_SPEND = 'routes.spend.jsonl'
 
-const logFile = async ($: EngineInterface, kind: string) =>
-  `${$.plugin.root}/${LOGS}/${await $.session.id()}.${kind}`
+const logFile = async ($: EngineInterface, kind: string) => `${$.plugin.root}/${LOGS}/${await $.session.id()}.${kind}`
 
 // One write at a time, so two of this session's lines can't rewrite each other.
 let writing: Promise<unknown> = Promise.resolve()
@@ -212,80 +137,12 @@ function append($: EngineInterface, kind: string, entry: Record<string, unknown>
   return writing
 }
 
-async function record($: EngineInterface, entry: Record<string, unknown>) {
+async function record($: EngineInterface, entry: Omit<Entry, 'at' | 'sessionId'> & Record<string, unknown>) {
   await append($, DECISIONS, entry)
   $.ui.invalidate('ui.render')
 }
 
 const recordSpend = ($: EngineInterface, spend: Omit<Spend, 'at' | 'sessionId'>) => append($, SPEND, spend)
-
-// Every routed turn of every session, oldest first.
-async function spent($: EngineInterface) {
-  const dir = `${$.plugin.root}/${LOGS}`
-  const names = (await $.fs.list(dir).catch(() => [])).map(entry => entry.name).filter(name => name.endsWith(`.${SPEND}`))
-  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...names.map(name => `${dir}/${name}`)]
-  const texts = await Promise.all(files.map(file => $.fs.read(file).catch(() => '')))
-  return texts
-    .flatMap(text => text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend))
-    .sort((a, b) => a.at.localeCompare(b.at))
-}
-
-const cost = (price: Price, tokens: Spend['tokens']) =>
-  (tokens.input * price.input +
-    tokens.output * price.output +
-    tokens.cacheRead * price.cacheRead +
-    tokens.cacheWrite * price.cacheWrite) /
-  1_000_000
-
-const usd = (n: number) => `$${n.toFixed(2)}`
-
-// The same tokens, priced as if the turn had run on `against`: a model name
-// from routes.json, or `session` for whatever the session had selected.
-async function savings($: EngineInterface, routes: Routes, against: string | undefined) {
-  const pricing = routes.pricing ?? {}
-  const wanted = against ?? routes.baseline?.model ?? 'opus'
-  const isSession = wanted === 'session'
-  const baseModel = routes.models.find(model => model.name === wanted || model.id === wanted)
-  if (!isSession && baseModel === undefined) {
-    return `No model called "${wanted}". Try ${routes.models.map(model => model.name).join(', ')} or session.`
-  }
-
-  const turns = await spent($)
-  let actual = 0
-  let compared = 0
-  let counted = 0
-  for (const turn of turns) {
-    const ranPrice = pricing[turn.ran]
-    const basePrice = pricing[isSession ? turn.session : baseModel!.id]
-    if (ranPrice === undefined || basePrice === undefined) continue
-    actual += cost(ranPrice, turn.tokens)
-    compared += cost(basePrice, turn.tokens)
-    counted += 1
-  }
-  if (counted === 0) return 'No routed turns with prices yet.'
-
-  const label = isSession ? 'the model you had selected' : `${baseModel!.name}${routes.baseline?.model === wanted ? ` · ${routes.baseline.effort}` : ''}`
-  const saved = compared - actual
-  const skipped = turns.length - counted
-  return [
-    `Against ${label}, since ${turns[0]!.at.slice(0, 10)}, over ${counted} turns:`,
-    `  router ${usd(actual)}  vs  ${usd(compared)}  →  saved ${usd(saved)} (${((saved / compared) * 100).toFixed(0)}%)`,
-    'Same tokens priced on both models; effort is not priced, only the model. A cheaper effort also thinks less, which this does not credit.',
-    ...(skipped > 0 ? [`${skipped} turns skipped for want of a price in routes.json.`] : []),
-  ].join('\n')
-}
-
-type Entry = {
-  at: string
-  sessionId?: string
-  prompt: string
-  wanted?: string
-  via?: string
-  ran?: string
-  held?: boolean
-  failed?: string
-  messages?: number
-}
 
 // The newest decisions of this session, newest first. A new chat has its own
 // file, so it starts with an empty pane rather than another's routes.
@@ -299,108 +156,21 @@ async function recent($: EngineInterface, count: number) {
     .reverse()
 }
 
-const LIME = '#AADD00'
-
-const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-// "claude-opus-5-5 · medium" as its two parts, the model by its family name.
-const parts = (ran = '') => {
-  const [model = '', effort = ''] = ran.split(' · ')
-  return { model: model.replace(/^claude-|-[\d-]+.*$/g, ''), effort }
-}
-
-const LIGHT = '#f7f7f8'
-const FADED = 'rgba(247,247,248,.6)'
-const RULE = 'rgba(247,247,248,.14)'
-const SANS = "Geist, -apple-system, 'Segoe UI', system-ui, sans-serif"
-const MONO = "'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace"
-const DISPLAY = "Barlow, 'Arial Black', 'Helvetica Neue', system-ui, sans-serif"
-const xml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const cut = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`)
-
-// The pane on a surface that draws SVG, in Kore's type: the route in force
-// over one lime rule, then a ruled list of the ones before it. It has no
-// ground of its own, so the pane's background shows through.
-function drawPane(rows: Entry[]) {
-  const width = 420
-  const [now, ...before] = rows
-  const line = (y: number, color = RULE, weight = 1) =>
-    `<rect x="4" y="${y}" width="${width - 8}" height="${weight}" fill="${color}"/>`
-  const text = (x: number, y: number, body: string, style: string, anchor = 'start') =>
-    `<text x="${x}" y="${y}" text-anchor="${anchor}" style="${style}">${xml(body)}</text>`
-  const label = `font:500 12px ${SANS};fill:${FADED}`
-  const data = `font:400 12px ${MONO};fill:${FADED}`
-  const right = width - 4
-
-  const out: string[] = []
-  let y = 0
-  if (now === undefined) {
-    out.push(text(4, 28, 'No prompt has been routed yet.', `font:400 14px ${SANS};fill:${FADED}`))
-    y = 44
-  } else {
-    const { model, effort } = parts(now.ran)
-    if (now.failed === undefined) {
-      out.push(
-        text(4, 44, model, `font:900 44px ${DISPLAY};fill:${LIGHT};letter-spacing:-1.5px`),
-        text(right, 26, effort, `font:400 15px ${MONO};fill:${LIGHT}`, 'end'),
-        text(right, 44, `effort · ${clock(now.at)}`, label, 'end'),
-        text(4, 70, now.held ? `Model held. The route asked for ${now.wanted}.` : `Decided by ${now.via}.`, `font:400 13px ${SANS};fill:${LIGHT}`),
-        text(4, 112, `${now.held ? `${now.via}, ` : ''}at ${now.messages} messages`, data),
-      )
-    } else {
-      out.push(
-        text(4, 38, 'No new route', `font:900 30px ${DISPLAY};fill:${LIGHT};letter-spacing:-1px`),
-        text(right, 38, clock(now.at), label, 'end'),
-        text(4, 70, cut(now.failed, 56), `font:400 13px ${SANS};fill:${LIGHT}`),
-      )
-    }
-    out.push(text(4, 92, cut(now.prompt, 62), `font:400 13px ${SANS};fill:${FADED}`), line(126, LIME, 2))
-    y = 128
-  }
-  if (before.length > 0) {
-    out.push(text(4, y + 26, 'Earlier', label))
-    y += 36
-    for (const row of before) {
-      const { model, effort } = parts(row.ran)
-      const head = row.failed === undefined ? `${model} · ${effort}${row.held ? '  held' : ''}` : 'no new route'
-      out.push(
-        line(y),
-        text(4, y + 23, clock(row.at), data),
-        text(56, y + 23, head, `font:500 13px ${SANS};fill:${LIGHT}`),
-        text(right, y + 23, row.messages === undefined ? '' : `${row.messages} msgs`, data, 'end'),
-        text(56, y + 42, cut(row.prompt, 52), `font:400 12px ${SANS};fill:${FADED}`),
-      )
-      y += 56
-    }
-    out.push(line(y))
-  }
-  const height = y + 8
-  return {
-    height,
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${out.join('')}</svg>`,
-  }
+// Every routed turn of every session, oldest first.
+async function spent($: EngineInterface) {
+  const dir = `${$.plugin.root}/${LOGS}`
+  const names = (await $.fs.list(dir).catch(() => [])).map(entry => entry.name).filter(name => name.endsWith(`.${SPEND}`))
+  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...names.map(name => `${dir}/${name}`)]
+  const texts = await Promise.all(files.map(file => $.fs.read(file).catch(() => '')))
+  return texts
+    .flatMap(text => text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend))
+    .sort((a, b) => a.at.localeCompare(b.at))
 }
 
 const say = (route: Route) => `${route.name} · ${route.effort} (${route.via})`
-
-// What a turn runs on, settled at its first request; `before` is the model
-// the conversation's last request went to.
-function settle($: EngineInterface, e: TurnStepInput, routes: Routes, route: Route, before: string) {
-  // A model routes.json doesn't list ranks above the ones it does.
-  const tier = (id: string) => {
-    const at = routes.models.findIndex(model => id.includes(model.name))
-    return at === -1 ? routes.models.length : at
-  }
-  const isStepDown = tier(route.model) < tier(before)
-  // A switch re-reads the whole conversation uncached, so stepping down only
-  // pays while there is little of it. Same tier: keep the variant in use.
-  const isHeld = isStepDown && e.messageCount > routes.stepDownUntilMessages
-  if (isHeld || tier(route.model) === tier(before)) {
-    $.ui.status(`router: model kept${isHeld ? ' (long conversation)' : ''} · ${route.effort} (${route.via})`)
-    return { model: before, effort: route.effort }
-  }
-  $.ui.status(`router: ${say(route)}`)
-  return { model: route.model, effort: route.effort }
-}
+// The middle of a session's figures: one overnight pause mustn't make every
+// prompt look an hour apart.
+const median = (list: number[]) => (list.length === 0 ? undefined : [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)])
 
 export const register: Register = on => {
   let isOn = true
@@ -409,16 +179,45 @@ export const register: Register = on => {
   // a prompt typed mid-turn must not switch models under that turn.
   let latest: Route | undefined
   let lastModel: string | undefined
+  // Tokens the main loop's last request carried: what a model switch rewrites.
+  let lastContext = 0
+  // What the last main turn ran on, which a pushback escalates from.
+  let lastRan: Settled | undefined
+  // A floor the person set with /router floor, and one an escalation set, which counts down.
+  let chosen: Floor | undefined
+  let floor: Floor | undefined
   let asked = ''
-  const pinned = new Map<string, Pick<Route, 'model' | 'effort'> | undefined>()
+  // The conversation's last few lines, kept as they pass so routing never has
+  // to read the whole transcript; read once only for a resumed session.
+  const tail: { role: string; text: string }[] = []
+  let isTailRead = false
+  // The pane's rows the person has opened, by their time.
+  const expanded = new Set<string>()
+  // How long the newest prompt's routing took, for its decision line.
+  let timing: { classifyMs?: number; routeMs?: number } = {}
+  const pinned = new Map<string, Settled | undefined>()
   // What a routed turn was set to and what it ran on, until its token counts arrive.
   const open = new Map<string, Omit<Spend, 'at' | 'sessionId' | 'tokens'>>()
+  // Tool errors in the main turn under way, and the turns already moved up for them.
+  let errors = 0
+  const struggled = new Set<string>()
+  // The subagents the router started, by id: the effort their steps take and their spend's labels.
+  const agents = new Map<string, { effort: Effort } & Omit<Spend, 'at' | 'sessionId' | 'tokens'>>()
+  // This session's own figures, which the step-down sum prefers to routes.json's guesses.
+  const seen = { steps: [] as number[], output: [] as number[], spans: [] as number[], lastPromptAt: undefined as number | undefined }
+  const steps = new Map<string, number>()
+  const habits = (): Habits => ({ steps: median(seen.steps), output: median(seen.output), spanMs: median(seen.spans) })
+  const remember = (role: string, text: string) => {
+    if (clean(text) === '') return
+    tail.push({ role, text: clip(text, 2000) })
+    tail.splice(0, Math.max(0, tail.length - TAIL))
+  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'router',
-      description: 'Model router: turn it on or off, or try a prompt against it',
-      argumentHint: '[on | off | pane | savings [model | session] | a prompt to try]',
+      description: 'Model router: turn it on or off, set a floor, or try a prompt against it',
+      argumentHint: '[on | off | pane | floor <model> | floor off | savings [model | session] | a prompt to try]',
     })
 
     // The router changes what a session runs on, so it says it is there.
@@ -440,99 +239,164 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    if (e.surface !== 'terminal') {
-      const { Svg } = $.ui.resolve(e)
-      const rows = await recent($, 7)
-      const { source, height } = drawPane(rows)
-      const alt = rows[0] === undefined ? 'No prompt has been routed yet.' : `Latest route: ${rows[0].ran ?? 'none'}.`
-
-      return <Svg source={source} alt={alt} width={420} height={height} />
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const rows = await recent($, SHOWN)
+    if (rows.length === 0) return <Text dimColor>No prompt has been routed yet.</Text>
+    // A press opens or closes a row; the redraw shows it.
+    const toggle = (key: string) => () => {
+      if (!expanded.delete(key)) expanded.add(key)
+      $.ui.invalidate('ui.render')
     }
-
-    const { Box, Text } = $.ui.resolve(e)
-    const [now, ...before] = await recent($, 7)
-    if (now === undefined) return <Text dimColor>No prompt has been routed yet.</Text>
-    const head = (row: Entry) => {
-      const { model, effort } = parts(row.ran)
-      return row.failed === undefined ? `${model} · ${effort}` : 'no new route'
+    const all = (isOpen: boolean) => () => {
+      for (const row of rows) {
+        if (isOpen) expanded.add(row.at)
+        else expanded.delete(row.at)
+      }
+      $.ui.invalidate('ui.render')
     }
 
     return (
       <Box flexDirection="column" paddingX={1} rowGap={1}>
-        <Box flexDirection="column">
-          <Box justifyContent="space-between">
-            <Text bold color={LIME}>
-              {head(now)}
-            </Text>
-            <Text dimColor>{clock(now.at)}</Text>
-          </Box>
-          <Text>
-            {now.failed ?? (now.held ? `Model held. The route asked for ${now.wanted}.` : `Decided by ${now.via}.`)}
-          </Text>
-          <Text dimColor wrap="truncate-end">
-            {now.prompt}
-          </Text>
-          {now.failed === undefined && (
-            <Text dimColor>
-              {now.held ? `${now.via}, ` : ''}at {now.messages} messages
-            </Text>
-          )}
+        <Box columnGap={2}>
+          <Button key="open-all" plain dimColor label="Open all" onPress={all(true)} />
+          <Button key="close-all" plain dimColor label="Close all" onPress={all(false)} />
         </Box>
-        {before.map(row => (
-          <Box flexDirection="column">
-            <Box justifyContent="space-between">
-              <Text bold>
-                {head(row)}
-                {row.held ? '  held' : ''}
-              </Text>
-              <Text dimColor>
-                {row.messages === undefined ? '' : `${row.messages} msgs  `}
-                {clock(row.at)}
-              </Text>
+        {rows.map((row, at) => {
+          const isOpen = expanded.has(row.at)
+          return (
+            <Box key={`row-${row.at}`} flexDirection="column">
+              <Button key={`toggle-${row.at}`} plain label={`${isOpen ? '▾' : '▸'} ${summary(row)}`} onPress={toggle(row.at)} />
+              {at === 0 && !isOpen && (
+                <Text color={LIME} wrap="truncate-end">
+                  {row.failed ?? row.note ?? `Decided by ${row.via}.`}
+                </Text>
+              )}
+              {!isOpen && (
+                <Text dimColor wrap="truncate-end">
+                  {row.prompt}
+                </Text>
+              )}
+              {isOpen &&
+                details(row).map(([label, value]) => (
+                  <Box key={`${row.at}-${label}`} columnGap={1}>
+                    <Text dimColor>{`${label}:`}</Text>
+                    <Text>{value}</Text>
+                  </Box>
+                ))}
             </Box>
-            <Text dimColor wrap="truncate-end">
-              {row.prompt}
-            </Text>
-          </Box>
-        ))}
+          )
+        })}
       </Box>
     )
   })
 
   on('prompt.submit', async ($, e, next) => {
     if (isOn && FROM_A_PERSON.has(e.origin.kind)) {
-      asked = clip(e.text, 120)
+      asked = clip(clean(e.text), 2000)
+      const at = await $.clock.now()
+      if (seen.lastPromptAt !== undefined) seen.spans.push(at - seen.lastPromptAt)
+      seen.lastPromptAt = at
+      // A floor counts down the person's prompts, then lifts.
+      if (floor?.turns !== undefined) floor = floor.turns <= 1 ? undefined : { ...floor, turns: floor.turns - 1 }
       try {
         routes = await load($)
-        latest = await decide($, routes, e.text)
+        const pushback = routes.guards?.pushback
+        if (pushback !== undefined && lastRan !== undefined && new RegExp(pushback, 'i').test(clean(e.text))) {
+          floor = escalate(routes, lastRan, 'escalated: you pushed back on the last turn')
+        }
+        if (!isTailRead && tail.length === 0) {
+          tail.push(...(await $.session.messages()).map(row => ({ role: row.role, text: row.text })).filter(row => clean(row.text) !== '').slice(-TAIL))
+        }
+        isTailRead = true
+        const decided = await decide($, routes, e.text, tail, latest)
+        timing = { classifyMs: decided.ms, routeMs: Math.round((await $.clock.now()) - at) }
+        latest = decided
       } catch (error) {
         // Routing must never be why a prompt fails: the last route stands, or
         // the session's own model when there has been none.
         $.ui.status(`router: no new route (${(error as Error).message})`)
         await record($, { prompt: asked, failed: (error as Error).message })
       }
+      remember('user', e.text)
     }
 
     return next(e)
   })
 
+  // A subagent starts on the model its task earns, unless it is a fork (which
+  // must share its parent's model), a teammate or a workflow's agent. A model
+  // the parent named is kept, or raised to the task's own if it is weaker.
+  on('agent.spawn', async ($, e, next) => {
+    // Newer engines say when a spawn is a teammate or a workflow's agent; older
+    // ones (the CLI at 2.1.285) don't, and raise neither through this event.
+    const kind = e as { workflow?: unknown; isTeammate?: boolean }
+    if (!isOn || e.fork || kind.workflow !== undefined || kind.isTeammate === true) return next(e)
+    const task = clip(clean(e.description || e.prompt), 120)
+    let current: Routes
+    let wanted: Route
+    try {
+      current = await load($)
+      const typed = current.subagents?.types?.[e.subagentType]
+      if (typed !== undefined) wanted = routeTask(current, typed, undefined, `${e.subagentType} agents`)
+      else if (current.subagents?.classify !== false) wanted = await decide($, current, `${e.description}\n\n${e.prompt}`, [])
+      else return next(e)
+    } catch (error) {
+      await record($, { prompt: task, failed: (error as Error).message, agent: e.subagentType })
+      return next(e)
+    }
+    const named = e.model === undefined || e.model === 'inherit' ? undefined : e.model
+    const isNamedKept = named !== undefined && tier(current, named) >= tier(current, wanted.model)
+    const ran = isNamedKept ? (current.models.find(one => one.name === named)?.id ?? named) : wanted.model
+    const result = await next({ ...e, model: ran })
+    if (result.deny !== undefined) return result
+    if (result.agentId !== undefined) {
+      agents.set(result.agentId, { effort: wanted.effort, prompt: task, session: e.parentModel, ran, agent: e.subagentType })
+    }
+    await record($, {
+      prompt: task,
+      wanted: `${wanted.name} · ${wanted.effort}`,
+      via: wanted.via,
+      ran: `${ran} · ${wanted.effort}`,
+      held: false,
+      note: isNamedKept && ran !== wanted.model ? `kept the ${named} the call asked for` : undefined,
+      agent: e.subagentType,
+    })
+    return result
+  })
+
+  // Tool errors in the main turn under way, which may mean it was routed too low.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined && result.isError === true) errors += 1
+    return result
+  })
+
   on('turn.step', async function* ($, e, next) {
-    // A subagent keeps the model and effort it was started with.
-    if (e.agentId !== undefined) return yield* next(e)
+    if (e.agentId !== undefined) {
+      // A routed subagent keeps the model it started on and takes its task's effort.
+      const routed = agents.get(e.agentId)
+      return yield* next(routed === undefined ? e : { ...e, effort: routed.effort })
+    }
+
     if (!pinned.has(e.turnId)) {
       const isRouted = isOn && latest !== undefined && routes !== undefined
-      const ran = isRouted ? settle($, e, routes, latest, lastModel ?? e.model) : undefined
+      const now = { before: lastModel ?? e.model, context: lastContext, messages: e.messageCount, floors: [chosen, floor].filter(one => one !== undefined), habits: habits() }
+      const ran = isRouted ? settle(routes!, latest!, now) : undefined
       pinned.set(e.turnId, ran)
-      if (ran !== undefined && latest !== undefined) {
+      errors = 0
+      if (ran !== undefined) {
+        lastRan = ran
         await record($, {
           prompt: asked,
-          wanted: `${latest.name} · ${latest.effort}`,
-          via: latest.via,
+          wanted: `${latest!.name} · ${latest!.effort}`,
+          via: latest!.via,
           ran: `${ran.model} · ${ran.effort}`,
-          held: ran.model !== latest.model,
+          held: ran.held === true,
+          note: ran.note,
           session: e.model,
           sessionEffort: e.effort,
           messages: e.messageCount,
+          ...timing,
         })
         open.set(e.turnId, {
           prompt: asked,
@@ -541,28 +405,57 @@ export const register: Register = on => {
           ran: ran.model,
         })
       }
+    } else {
+      // A turn that keeps failing below the top model moves up a tier for the
+      // rest of it, and the floor holds for the next few prompts too.
+      const ran = pinned.get(e.turnId)
+      const limit = routes?.guards?.toolErrors ?? 4
+      if (ran !== undefined && routes !== undefined && !struggled.has(e.turnId) && errors >= limit) {
+        struggled.add(e.turnId)
+        const up = escalate(routes, ran, `escalated: ${errors} tool errors in one turn`)
+        const raised = { model: model(routes, up.model).id, effort: up.effort ?? ran.effort, note: up.why }
+        if (tier(routes, raised.model) > tier(routes, ran.model) || raised.effort !== ran.effort) {
+          floor = up
+          lastRan = raised
+          pinned.set(e.turnId, raised)
+          const spend = open.get(e.turnId)
+          if (spend !== undefined) open.set(e.turnId, { ...spend, ran: raised.model })
+          await record($, { prompt: asked, via: latest?.via, ran: `${raised.model} · ${raised.effort}`, note: raised.note, messages: e.messageCount })
+        }
+      }
     }
     const route = pinned.get(e.turnId)
     lastModel = route?.model ?? e.model
+    steps.set(e.turnId, e.index + 1)
+    if (route !== undefined) $.ui.status(`router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`)
 
-    return yield* next(route === undefined ? e : { ...e, ...route })
+    const result = yield* next(route === undefined ? e : { ...e, model: route.model, effort: route.effort })
+    if (result.usage !== null) {
+      lastContext = result.usage.input_tokens + result.usage.cache_read_input_tokens + result.usage.cache_creation_input_tokens
+    }
+    return result
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId !== undefined) {
+      const routed = agents.get(e.agentId)
+      if (routed !== undefined && e.usage !== undefined) {
+        const { effort: _, ...labels } = routed
+        await recordSpend($, { ...labels, tokens: tokensOf(e.usage) })
+      }
+      return next(e)
+    }
+
+    remember('assistant', e.answer)
     pinned.delete(e.turnId)
+    struggled.delete(e.turnId)
+    const count = steps.get(e.turnId)
+    steps.delete(e.turnId)
+    if (count !== undefined && !e.isAborted) seen.steps.push(count)
+    if (e.usage !== undefined && !e.isAborted) seen.output.push(e.usage.output_tokens)
     const routed = open.get(e.turnId)
     open.delete(e.turnId)
-    if (routed !== undefined && e.agentId === undefined && e.usage !== undefined) {
-      await recordSpend($, {
-        ...routed,
-        tokens: {
-          input: e.usage.input_tokens,
-          output: e.usage.output_tokens,
-          cacheRead: e.usage.cache_read_input_tokens,
-          cacheWrite: e.usage.cache_creation_input_tokens,
-        },
-      })
-    }
+    if (routed !== undefined && e.usage !== undefined) await recordSpend($, { ...routed, tokens: tokensOf(e.usage) })
 
     return next(e)
   })
@@ -578,21 +471,46 @@ export const register: Register = on => {
       await $.ui.open({ id: PANE, title: 'Kore Router' })
       return { text: 'Router pane opened.' }
     }
+    if (args === 'floor off') {
+      chosen = undefined
+      floor = undefined
+      return { text: 'Floor lifted.' }
+    }
+    if (args.startsWith('floor ')) {
+      try {
+        const named = model(await load($), args.slice('floor '.length).trim())
+        chosen = { model: named.name, why: `your floor: ${named.name}` }
+        return { text: `This session won't run below ${named.name} until /router floor off.` }
+      } catch (error) {
+        return { text: (error as Error).message }
+      }
+    }
     if (args === 'savings' || args.startsWith('savings ')) {
       try {
-        return { text: await savings($, await load($), args.slice('savings'.length).trim() || undefined) }
+        return { text: savings(await load($), await spent($), args.slice('savings'.length).trim() || undefined) }
       } catch (error) {
         return { text: `No figures: ${(error as Error).message}` }
       }
     }
     if (args === '') {
       const last = latest === undefined ? '' : ` Last route: ${say(latest)}.`
-      return { text: `Router is ${isOn ? 'on' : 'off'}.${last}` }
+      const held = [chosen, floor]
+        .filter(one => one !== undefined)
+        .map(one => ` Floor: ${one.model}${one.effort === undefined ? '' : ` · ${one.effort}`} (${one.why}${one.turns === undefined ? '' : `, ${one.turns} more prompts`}).`)
+        .join('')
+      return { text: `Router is ${isOn ? 'on' : 'off'}.${last}${held}` }
     }
     try {
-      return { text: say(await decide($, await load($), args)) }
+      return { text: say(await decide($, await load($), args, tail)) }
     } catch (error) {
       return { text: `No route: ${(error as Error).message}` }
     }
   })
 }
+
+const tokensOf = (usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) => ({
+  input: usage.input_tokens,
+  output: usage.output_tokens,
+  cacheRead: usage.cache_read_input_tokens,
+  cacheWrite: usage.cache_creation_input_tokens,
+})

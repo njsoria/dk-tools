@@ -10,14 +10,14 @@
     {
       "name": "kore-router",
       "source": "./kore-router",
-      "description": "Sends each prompt to the model and effort it deserves, picked by rules and a cheap classifier (Jev or Haiku).",
-      "version": "0.1.0",
+      "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
+      "version": "0.2.0",
       "author": {
         "name": "Nate Soria",
         "email": "nate@devkore.com"
       },
       "license": "MIT",
-      "keywords": ["routing", "model-selection", "effort", "hooks"]
+      "keywords": ["routing", "model-selection", "effort", "subagents", "hooks"]
     }
   ]
 }
