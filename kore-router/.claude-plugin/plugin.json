@@ -1,6 +1,6 @@
 {
-  "name": "kore-router",
-  "version": "0.2.0",
+  "name": "kore-model-router",
+  "version": "0.3.0",
   "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
   "license": "MIT",
   "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-router",
