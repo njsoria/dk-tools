@@ -329,6 +329,13 @@ Each session writes only its own files, so sessions running side by side can't
 overwrite each other. `logs/` is git-ignored and never trimmed. A
 `routes.spend.jsonl` left by an earlier version is still counted.
 
+## Privacy
+
+The plugin runs on your machine and sends nothing to Kore. With the default
+classifier, the prompt and the last few messages go to TypeSafe to be sorted;
+set `"classifier": "haiku"` to keep that on your own Claude login. Its logs
+stay in `logs/`. The detail is in [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
