@@ -28,10 +28,10 @@
     "fallbackMessages": 30
   },
 
-  "_guards": "pushback: a prompt this matches escalates the next holdTurns prompts a tier above the turn it answers. toolErrors: that many failed tool calls in one turn below the top model move the rest of it up a tier. followUp: a prompt this matches whole keeps the route in force without asking the classifier.",
+  "_guards": "pushback: a prompt this matches (blunt openers like \"no\" or \"try again\" at the start of the prompt, softer corrections like \"I'm talking about...\" or \"that's not what I meant\" at the start of any sentence) escalates the next holdTurns prompts a tier above the turn it answers. toolErrors: that many failed tool calls in one turn below the top model move the rest of it up a tier. followUp: a prompt this matches whole keeps the route in force without asking the classifier.",
   "guards": {
     "followUp": "^\\W*((yes|yep|yeah|y|ok|okay|sure|please|great|perfect|thanks|thank you|go ahead|go for it|do it|do that|continue|carry on|proceed|sounds good|looks good|lgtm|ship it|keep going|next)[\\s,.!]*)+$",
-    "pushback": "^\\W*(no\\b|nope\\b|wrong\\b|that'?s (not|wrong|incorrect)|(it|this|that)( still)? (doesn'?t|didn'?t|isn'?t|won'?t|does not|did not|is not) (work|right|correct|fix)|still (fails?|failing|broken|wrong|not)|try again|not what i|you (broke|missed|forgot)|revert\\b|undo\\b)",
+    "pushback": "^\\W*(no\\b|nope\\b|wrong\\b|that['’]?s (not|wrong|incorrect)|(it|this|that)( still)? (doesn['’]?t|didn['’]?t|isn['’]?t|won['’]?t|does not|did not|is not) (work|right|correct|fix)|still (fails?|failing|broken|wrong|not)|try again|not what i|you (broke|missed|forgot)|revert\\b|undo\\b)|(^|[.!?\\n]\\s*)\\W*(i(['’]?m| am| was) (talking|asking|referring|speaking) (about|of)|i (already |just )?(said|told you|meant)\\b|i (don['’]?t|do not) need you to|i (didn['’]?t|did not) (ask|say|mean|want)|i never (asked|said)|you(['’]?re| are) (confusing|misunderstanding|not (listening|understanding|following))|you (misunderstood|misread|didn['’]?t (listen|understand)|don['’]?t (understand|get it)|aren['’]?t listening)|stop (confusing|ignoring))|\\b((do|follow|listen to) what i(['’]?m| am)? (say|saying|said|asked|asking)|you(['’]?re| are) (confusing|misunderstanding) me|not what i (meant|said|asked|wanted))",
     "holdTurns": 3,
     "toolErrors": 4
   },

@@ -113,7 +113,12 @@ The router raises a turn when in doubt and never lowers one:
 - **Pushback escalates.** A prompt that matches `guards.pushback` ("that's
   wrong", "still failing", "try again"...) runs a tier above the turn it
   answers, and so do the next `holdTurns - 1` prompts. At the top tier it
-  thinks a level harder instead.
+  thinks a level harder instead. Blunt openers ("no", "wrong", "revert") count
+  only at the start of the prompt. Softer corrections and frustration ("I'm
+  talking about...", "I said...", "I meant...", "I don't need you to...",
+  "you're confusing me") count at the start of any sentence or line, so they
+  are caught after a first sentence too. An instruction like "I need you to
+  add a flag" is not a correction and does not escalate.
 - **A struggling turn moves up.** After `guards.toolErrors` failed tool calls
   in one turn below the top model, the rest of the turn runs a tier up, and the
   floor holds for the next few prompts.
@@ -239,6 +244,14 @@ have had, and fix `routes.json` until the suite passes again.
 
 The eval needs `TYPESAFE_API_KEY` and makes one Jev call per case per run. It
 writes every answer to `eval/results/`, which git ignores.
+
+The pushback guard has its own offline check, with no key or API call. It tests
+`guards.pushback` against the corrections and near-misses under `pushback` in
+`cases.json` and exits non-zero on a miss:
+
+```bash
+npx -y tsx@4.19.2 eval/pushback.ts
+```
 
 ## Configuration
 

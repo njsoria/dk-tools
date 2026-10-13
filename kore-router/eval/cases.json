@@ -394,5 +394,43 @@
       "task": "debug",
       "hard": true
     }
-  ]
+  ],
+  "pushback": {
+    "_": "Prompts the pushback guard (guards.pushback) is checked against, offline: `npx -y tsx@4.19.2 eval/pushback.ts`. `escalate` are corrections and frustration that must run a tier up; `steady` are ordinary instructions and narration that must not, several of them close to a correction in their wording.",
+    "escalate": [
+      "I don't need you to worry about that. I need you to do what I'm saying and not confuse me with short texts I've sent to people",
+      "I'm talking about the note to joe b",
+      "that's not what I meant",
+      "That’s not what I meant, I wanted the other file",
+      "you're confusing me",
+      "You are confusing me.",
+      "Look, I need you to do what I'm saying.",
+      "I said use pnpm",
+      "I meant the staging config",
+      "Ok. I told you already, the other one",
+      "I didn't ask for a refactor",
+      "Fine.\nI'm asking about the header, not the footer",
+      "you misunderstood the question",
+      "no, the other file",
+      "wrong file",
+      "it still doesn’t work",
+      "try again"
+    ],
+    "steady": [
+      "I need you to add a --json flag to the exporter",
+      "I need you to review the diff in PR 42",
+      "I need you to also update the docs",
+      "Write the note to joe b. I need you to keep it short",
+      "I'm talking to Joe tomorrow, draft an agenda",
+      "I'm asking Sam to review it; can you write the summary?",
+      "Add the retry logic and note in the README that I said we'd keep 3 attempts",
+      "I don't want you to change the API, just add a test",
+      "what did I say in the last commit message?",
+      "Add a new test. No new dependencies.",
+      "Add the feature, then revert the config afterwards",
+      "I was thinking about caching; can you sketch it?",
+      "The log says 'you are confusing' somewhere; find where",
+      "what does git stash pop do?"
+    ]
+  }
 }
