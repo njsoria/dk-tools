@@ -26,7 +26,16 @@ if (pattern === undefined) {
 }
 const matches = (prompt: string) => new RegExp(pattern, 'i').test(clean(prompt))
 
+// A big paste goes through the pattern whole, so it must stay linear.
+const pastes = ['Fix this.\n' + '\n'.repeat(200_000), 'a' + '.'.repeat(200_000), ',,,,,,,\n'.repeat(20_000), 'a. ' + ' '.repeat(200_000)]
+const slow = pastes.filter(paste => {
+  const started = performance.now()
+  matches(paste)
+  return performance.now() - started > 250
+})
+
 const misses = [
+  ...slow.map(paste => `SLOW       ${paste.length} characters of ${JSON.stringify(paste.slice(0, 12))}...`),
   ...escalate.filter(prompt => !matches(prompt)).map(prompt => `MISSED     "${prompt}"`),
   ...steady.filter(matches).map(prompt => `ESCALATED  "${prompt}"`),
 ]

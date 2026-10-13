@@ -116,11 +116,13 @@ The router raises a turn when in doubt and never lowers one:
   thinks a level harder instead. Blunt openers ("no", "wrong", "revert") count
   only at the start of the prompt. Softer corrections and frustration ("I'm
   talking about...", "I said...", "I meant...", "I don't need you to...",
-  "you're confusing me") count at the start of any sentence or line, so they
-  are caught after a first sentence too. An instruction like "I need you to
-  add a flag" is not a correction and does not escalate, and neither does a
-  bare "try again" or "check again", which may only mean refresh a report or
-  re-run a search.
+  "it still doesn't work", "that's wrong") count at the start of any sentence
+  or line, after at most two interjections ("ok,", "sorry,", "try again,"), so
+  they are caught after a first sentence too. A few phrases ("you're confusing
+  me", "as I said", "do what I'm saying") count anywhere. An instruction like
+  "I need you to add a flag" is not a correction and does not escalate, and
+  neither does a bare "try again" or "check again", which may only mean refresh
+  a report or re-run a search.
 - **A struggling turn moves up.** After `guards.toolErrors` failed tool calls
   in one turn below the top model, the rest of the turn runs a tier up, and the
   floor holds for the next few prompts.

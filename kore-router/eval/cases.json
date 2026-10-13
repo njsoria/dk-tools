@@ -414,7 +414,16 @@
       "no, the other file",
       "wrong file",
       "it still doesn’t work",
-      "no, try again"
+      "no, try again",
+      "Try again, it's still failing",
+      "Try again. It still doesn't work.",
+      "try again, that's wrong",
+      "I ran it again. It still doesn't work.",
+      "Hmm, that's not right",
+      "Wait, you broke the tests",
+      "Sorry, I meant the staging config",
+      "Again, I'm talking about the note to joe b",
+      "As I said, use pnpm"
     ],
     "steady": [
       "I need you to add a --json flag to the exporter",
@@ -434,7 +443,15 @@
       "try again",
       "check again",
       "Run the search again and list anything new",
-      "Refresh the report and try again"
+      "Refresh the report and try again",
+      "I didn't want to bother Sam, so draft a message to Joe instead",
+      "I didn't ask Sam yet. Draft the request for me.",
+      "Stop ignoring SIGTERM in the worker so it shuts down cleanly.",
+      "Write a note to Joe saying the venue is not what I wanted",
+      "Text Sam that the quote was not what I asked for",
+      "No worries. Next, add a --verbose flag",
+      "No new deps",
+      "Undo/redo support for the editor"
     ]
   }
 }
