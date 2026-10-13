@@ -4,7 +4,7 @@
   "description": "Small tools for day-to-day work at DevKore.",
   "owner": {
     "name": "DevKore",
-    "email": "nate@devkore.com"
+    "url": "https://github.com/njsoria/dk-tools"
   },
   "plugins": [
     {
@@ -14,8 +14,10 @@
       "version": "0.2.0",
       "author": {
         "name": "Nate Soria",
-        "email": "nate@devkore.com"
+        "url": "https://github.com/njsoria"
       },
+      "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-router",
+      "repository": "https://github.com/njsoria/dk-tools",
       "license": "MIT",
       "keywords": ["routing", "model-selection", "effort", "subagents", "hooks"]
     }
