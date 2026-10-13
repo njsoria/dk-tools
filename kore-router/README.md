@@ -25,8 +25,9 @@ has, so the IDE extensions should show it too, though that is untested.
 ```
 
 Then start a new session. The router says it is on with a toast, `router: on`
-appears in the line under the prompt, and its pane opens by itself (set
-`"openPane": false` in `routes.json` to stop that).
+appears in the line under the prompt. Open its pane with `/router pane` or by
+clicking that line (set `"openPane": true` in `routes.json` to open it with
+every session).
 
 To classify with Jev (the default), add a TypeSafe API key, either to the
 environment or to a `.env` file beside `routes.json`:
