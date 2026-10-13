@@ -7,3 +7,6 @@ kore-router/.claude-plugin/types/
 kore-router/logs/
 kore-router/routes.log.jsonl
 kore-router/routes.spend.jsonl
+
+# kore-finisher: each session's waiting and pull-request records.
+kore-finisher/logs/

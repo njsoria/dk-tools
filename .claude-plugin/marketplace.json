@@ -17,7 +17,29 @@
         "email": "nate@devkore.com"
       },
       "license": "MIT",
-      "keywords": ["routing", "model-selection", "effort", "hooks"]
+      "keywords": [
+        "routing",
+        "model-selection",
+        "effort",
+        "hooks"
+      ]
+    },
+    {
+      "name": "kore-finisher",
+      "source": "./kore-finisher",
+      "description": "Lists what is outstanding across your Claude sessions: sessions waiting on you, and the pull requests they touched.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Nate Soria",
+        "email": "nate@devkore.com"
+      },
+      "license": "MIT",
+      "keywords": [
+        "sessions",
+        "pull-requests",
+        "waiting",
+        "inbox"
+      ]
     }
   ]
 }
