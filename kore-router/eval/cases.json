@@ -414,7 +414,7 @@
       "no, the other file",
       "wrong file",
       "it still doesn’t work",
-      "try again"
+      "no, try again"
     ],
     "steady": [
       "I need you to add a --json flag to the exporter",
@@ -430,7 +430,11 @@
       "Add the feature, then revert the config afterwards",
       "I was thinking about caching; can you sketch it?",
       "The log says 'you are confusing' somewhere; find where",
-      "what does git stash pop do?"
+      "what does git stash pop do?",
+      "try again",
+      "check again",
+      "Run the search again and list anything new",
+      "Refresh the report and try again"
     ]
   }
 }

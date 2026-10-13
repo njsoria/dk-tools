@@ -111,14 +111,16 @@ The router raises a turn when in doubt and never lowers one:
 - **Task floors.** A task never runs below its own model and effort, and an
   `atLeast` rule raises any task whose words mark it risky.
 - **Pushback escalates.** A prompt that matches `guards.pushback` ("that's
-  wrong", "still failing", "try again"...) runs a tier above the turn it
+  wrong", "still failing", "no, the other one"...) runs a tier above the turn it
   answers, and so do the next `holdTurns - 1` prompts. At the top tier it
   thinks a level harder instead. Blunt openers ("no", "wrong", "revert") count
   only at the start of the prompt. Softer corrections and frustration ("I'm
   talking about...", "I said...", "I meant...", "I don't need you to...",
   "you're confusing me") count at the start of any sentence or line, so they
   are caught after a first sentence too. An instruction like "I need you to
-  add a flag" is not a correction and does not escalate.
+  add a flag" is not a correction and does not escalate, and neither does a
+  bare "try again" or "check again", which may only mean refresh a report or
+  re-run a search.
 - **A struggling turn moves up.** After `guards.toolErrors` failed tool calls
   in one turn below the top model, the rest of the turn runs a tier up, and the
   floor holds for the next few prompts.
