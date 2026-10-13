@@ -207,8 +207,17 @@ function painSpots(snap, a, { perDeploy, now }) {
     const gbHours = days.length ? days.reduce((t, d) => t + (d.usage?.db_compute || 0), 0) / days.length : null
     const minGB = Math.min(...dbSites.map((s) => (s.database.minCU ?? 0.25) * GB_PER_CU))
     const awake = gbHours != null ? gbHours / 24 / minGB : null
+    // A snapshot taken at a quiet hour shows which database never sleeps.
     const list = dbSites
-      .map((s) => s.name + (s.database.sleepSeconds ? ` (sleeps after ${s.database.sleepSeconds}s idle)` : ''))
+      .map((s) => {
+        const d = s.database
+        const facts = [
+          d.awake != null && (d.awake ? 'awake' : 'asleep') + ' at this snapshot',
+          d.sleepSeconds && `sleeps after ${d.sleepSeconds}s idle`,
+          d.branches > 1 && `${d.branches} branches`,
+        ].filter(Boolean)
+        return facts.length ? `${s.name} (${facts.join(', ')})` : s.name
+      })
       .join(', ')
     const size =
       awake != null

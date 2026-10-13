@@ -42,13 +42,18 @@ leave the history alone.
 | Credits by meter per day, 90 days | `/{team}/credit_usage_insights` |
 | Production deploys and build time per site | The public deploys API |
 | Database size and sleep setting per site | `/sites/{id}/database/compute/settings` |
+| Whether each production database is awake, and its branch count | `/sites/{id}/database/branches` |
 
-The first three are the endpoints Netlify's own Usage page calls. They are not
-in the public API reference, so they may change. If they stop answering, the
-report falls back to counting production deploys and says so.
+All but the deploys are the endpoints Netlify's own dashboard calls. They are
+not in the public API reference, so they may change. If the billing ones stop
+answering, the report falls back to counting production deploys and says so.
 
-The tool never calls a site's `/database` route, which returns connection
-strings.
+The branches route also returns connection strings. The tool keeps three
+fields from it (branch count, awake, last active) and drops the rest before
+anything is saved or printed. It never calls a site's `/database` route.
+
+Netlify doesn't say which database the compute is for. A snapshot taken at a
+quiet hour does: the database still awake then is the one that never sleeps.
 
 ## How it decides
 

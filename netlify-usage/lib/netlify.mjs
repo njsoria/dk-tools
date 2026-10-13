@@ -79,6 +79,23 @@ async function billing(get, slug) {
   }
 }
 
+// The branches route returns each branch's connection strings too. Only the
+// fields named here leave this function, so none reach the history or output.
+async function databaseBranches(get, siteId) {
+  try {
+    const res = await get(`sites/${siteId}/database/branches`)
+    const list = Array.isArray(res) ? res : res.branches || []
+    const prod = list.find((b) => b.name === 'production')
+    return {
+      branches: list.length,
+      awake: prod?.compute?.current_state === 'active',
+      lastActive: prod?.compute?.last_active ?? null,
+    }
+  } catch {
+    return {}
+  }
+}
+
 const numbers = (o = {}) => ({ used: Number(o.used || 0), available: Number(o.available || 0), total: Number(o.total || 0) })
 
 export async function collect({ team } = {}) {
@@ -102,10 +119,11 @@ export async function collect({ team } = {}) {
   const ours = sites.filter((s) => s.account_id === account.id)
   const perSite = await Promise.all(
     ours.map(async (s) => {
-      const [deploys, db] = await Promise.all([
+      const [deploys, db, branches] = await Promise.all([
         deploysSince(get, s.id, lastStart),
         // Compute settings only: the site's /database route returns credentials.
         s.has_database ? get(`sites/${s.id}/database/compute/settings`).catch(() => null) : null,
+        s.has_database ? databaseBranches(get, s.id) : null,
       ])
       const tally = (from, to) => {
         const inRange = deploys.filter((d) => {
@@ -123,7 +141,9 @@ export async function collect({ team } = {}) {
         name: s.name,
         repo: s.build_settings?.repo_url || null,
         functions: s.published_deploy?.available_functions?.length ?? 0,
-        database: s.has_database ? { minCU: db?.min_cu ?? null, maxCU: db?.max_cu ?? null, sleepSeconds: db?.sleep_timeout_seconds ?? null } : null,
+        database: s.has_database
+          ? { minCU: db?.min_cu ?? null, maxCU: db?.max_cu ?? null, sleepSeconds: db?.sleep_timeout_seconds ?? null, ...branches }
+          : null,
         current: tally(periodStart, periodEnd),
         last: tally(lastStart, periodStart),
       }
