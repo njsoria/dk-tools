@@ -374,11 +374,11 @@ for (const surface of ['terminal', 'desktop'] as const) {
     world(on, { answers: jev('build', 0.9, 1.2) })
     await ask($, 'add a --json flag\nyes since it hits a zoho line\nyes they should be turned off')
     const pane = await $.ui.mount({
-      plugin: 'kore-router',
+      plugin: 'kore-model-router',
       surface,
       component: 'Pane',
       requestId: 'router',
-      props: { title: 'Kore Router', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+      props: { title: 'Kore Model Router', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
     })
     expect(await pane.find({ text: 'add a --json flag' })).toBeDefined()
     expect(await pane.find({ text: /zoho/ })).toBeUndefined()
@@ -393,11 +393,11 @@ for (const surface of ['terminal', 'desktop'] as const) {
     world(on, { answers: jev('build', 0.9, 1.2) })
     await ask($, 'add a --json flag to the export command so the CI job can read its output')
     const pane = await $.ui.mount({
-      plugin: 'kore-router',
+      plugin: 'kore-model-router',
       surface,
       component: 'Pane',
       requestId: 'router',
-      props: { title: 'Kore Router', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+      props: { title: 'Kore Model Router', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
     })
     const [toggle] = await pane.findAll({ type: 'Button', text: /sonnet · medium/ })
     expect(await pane.find({ text: 'Decided by:' })).toBeUndefined()
@@ -422,7 +422,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     on('ui.render', { component: 'PromptHint' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.hint }))
     await ask($, 'add a --json flag')
     const hint = await $.ui.mount({
-      plugin: 'kore-router',
+      plugin: 'kore-model-router',
       surface,
       component: 'PromptHint',
       props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },

@@ -1,4 +1,4 @@
-// Kore Router: sends each prompt, and each subagent, to the model and effort
+// Kore Model Router: sends each prompt, and each subagent, to the model and effort
 // its job deserves.
 //
 // Rules in routes.json are tried first; what they don't settle goes to a cheap
@@ -226,7 +226,7 @@ export const register: Register = on => {
     })
 
     // The router changes what a session runs on, so it says it is there.
-    $.ui.toast('Kore Router is on. /router off to turn it off.')
+    $.ui.toast('Kore Model Router is on. /router off to turn it off.')
     line = 'router: on'
 
     // A slow tick keeps the pane current should a redraw be missed.
@@ -235,7 +235,7 @@ export const register: Register = on => {
     // The pane opens with the session unless routes.json says `"openPane": false`.
     // A pane that won't open must not stop the router from starting.
     try {
-      if ((await load($)).openPane !== false) await $.ui.open({ id: PANE, title: 'Kore Router' })
+      if ((await load($)).openPane !== false) await $.ui.open({ id: PANE, title: 'Kore Model Router' })
     } catch {
       // `/router pane` still opens it by hand.
     }
@@ -301,7 +301,7 @@ export const register: Register = on => {
     if (line === undefined) return next(e)
     const { Box, Button } = $.ui.resolve(e)
     const open = () => {
-      void $.ui.open({ id: PANE, title: 'Kore Router', focus: true })
+      void $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
     }
 
     return (
@@ -497,7 +497,7 @@ export const register: Register = on => {
     }
     // `open` too: the word people reach for.
     if (args === 'pane' || args === 'open') {
-      await $.ui.open({ id: PANE, title: 'Kore Router' })
+      await $.ui.open({ id: PANE, title: 'Kore Model Router' })
       return { text: 'Router pane opened.' }
     }
     if (args === 'floor off') {

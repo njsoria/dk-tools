@@ -1,6 +1,6 @@
-<img src="assets/logo.svg" alt="Kore Router" width="96" height="96" align="left">
+<img src="assets/logo.svg" alt="Kore Model Router" width="96" height="96" align="left">
 
-# Kore Router
+# Kore Model Router
 
 A Claude Code plugin that sends each prompt, and each subagent, to the model
 and effort its job deserves. Leave your session on your strongest model and
@@ -21,7 +21,7 @@ has, so the IDE extensions should show it too, though that is untested.
 
 ```bash
 /plugin marketplace add njsoria/dk-tools
-/plugin install kore-router@dk-tools
+/plugin install kore-model-router@dk-tools
 ```
 
 Then start a new session. The router says it is on with a toast, `router: on`
