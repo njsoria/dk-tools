@@ -1,0 +1,27 @@
+{
+  "checked": "2026-10-13",
+  "netlify": {
+    "source": "https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/",
+    "creditsPerProductionDeploy": 15,
+    "creditsPerBandwidthGB": 20,
+    "creditsPerComputeGBHour": 10,
+    "creditsPer10kRequests": 2
+  },
+  "azureStaticWebApps": {
+    "source": "https://azure.microsoft.com/en-us/pricing/details/app-service/static/",
+    "standardPerAppMonth": 9,
+    "freePerAppMonth": 0,
+    "includedBandwidthGB": 100,
+    "bandwidthPerGB": 0.2,
+    "note": "Free has no SLA and 2 custom domains. Builds run on GitHub Actions minutes."
+  },
+  "awsAmplify": {
+    "source": "https://aws.amazon.com/amplify/pricing/",
+    "buildMinute": 0.01,
+    "bandwidthPerGB": 0.15,
+    "storagePerGBMonth": 0.023,
+    "ssrPerMillionRequests": 0.3,
+    "ssrPerGBHour": 0.2,
+    "note": "Bills every build, previews included. The 12-month free tier is left out."
+  }
+}

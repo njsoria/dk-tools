@@ -1,0 +1,16 @@
+{
+  "name": "netlify-usage",
+  "version": "0.1.0",
+  "description": "Track Netlify credits and see which sites cost less on Azure or AWS",
+  "type": "module",
+  "bin": {
+    "netlify-usage": "bin/netlify-usage.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
