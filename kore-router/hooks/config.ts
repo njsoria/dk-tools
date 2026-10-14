@@ -118,3 +118,22 @@ export const task = (routes: Routes, name: string) => {
 
 // The price of a model by its id, a variant such as `[1m]` priced as its base.
 export const price = (routes: Routes, id: string) => routes.pricing?.[id] ?? routes.pricing?.[id.replace(/\[.*\]$/, '')]
+
+// A plugin installed from a repository or the directory runs a copy,
+// plugins/cache/<marketplace>/<plugin>/<version>, which the next version
+// replaces. What must outlive an update, the logs and a person's own
+// routes.json, goes to the folder Claude Code keeps for the plugin's data,
+// plugins/data/<plugin>-<marketplace>. A plugin run from its own folder (a
+// folder marketplace, --plugin-dir) keeps them beside it.
+const INSTALLED = /^(.*)[\\/]plugins[\\/]cache[\\/]([^\\/]+)[\\/]([^\\/]+)[\\/]([^\\/]+)[\\/]?$/
+
+export function dataDir(root: string) {
+  const at = INSTALLED.exec(root)
+  return at === null ? root : `${at[1]}/plugins/data/${`${at[3]}-${at[2]}`.replace(/[^\w-]/g, '-')}`
+}
+
+// The folder holding every installed version, whose logs/ earlier versions wrote.
+export function versionsDir(root: string) {
+  const at = INSTALLED.exec(root)
+  return at === null ? undefined : { dir: `${at[1]}/plugins/cache/${at[2]}/${at[3]}`, current: at[4]! }
+}

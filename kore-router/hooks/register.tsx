@@ -17,7 +17,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
-import { type Effort, type Routes, check, model, tier } from './config'
+import { type Effort, type Routes, check, dataDir, model, tier, versionsDir } from './config'
 import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, isThin, keepRoute, routeTask, settle } from './decide'
 import { type Entry, type Spend, savings } from './ledger'
 import { LIME, details, firstLine, summary } from './pane'
@@ -45,7 +45,13 @@ async function togglePane($: EngineInterface) {
   else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
 }
 
-const load = async ($: EngineInterface) => check(JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes)
+// A person's own routes.json in the data folder stands in for the one the
+// plugin ships, which an update replaces.
+async function load($: EngineInterface) {
+  const own = `${dataDir($.plugin.root)}/routes.json`
+  const text = await $.fs.read(own).catch(() => $.fs.read(`${$.plugin.root}/routes.json`))
+  return check(JSON.parse(text) as Routes)
+}
 
 // The TypeSafe key comes from the plugin's own settings: Claude Code asks for
 // it when the plugin is enabled and keeps it in secure storage, and every
@@ -132,7 +138,7 @@ const SPEND = 'spend.jsonl'
 // The one spend file every session shared before each had its own.
 const OLD_SPEND = 'routes.spend.jsonl'
 
-const logFile = async ($: EngineInterface, kind: string) => `${$.plugin.root}/${LOGS}/${await $.session.id()}.${kind}`
+const logFile = async ($: EngineInterface, kind: string) => `${dataDir($.plugin.root)}/${LOGS}/${await $.session.id()}.${kind}`
 
 // One write at a time, so two of this session's lines can't rewrite each other.
 let writing: Promise<unknown> = Promise.resolve()
@@ -172,11 +178,19 @@ async function recent($: EngineInterface, count: number) {
     .reverse()
 }
 
-// Every routed turn of every session, oldest first.
+// Every routed turn of every session, oldest first: those in the data folder,
+// and those an earlier installed version left in its own logs/.
 async function spent($: EngineInterface) {
-  const dir = `${$.plugin.root}/${LOGS}`
-  const names = (await $.fs.list(dir).catch(() => [])).map(entry => entry.name).filter(name => name.endsWith(`.${SPEND}`))
-  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...names.map(name => `${dir}/${name}`)]
+  const dirs = [`${dataDir($.plugin.root)}/${LOGS}`]
+  const versions = versionsDir($.plugin.root)
+  if (versions !== undefined) {
+    const earlier = (await $.fs.list(versions.dir).catch(() => [])).filter(entry => entry.kind === 'dir' && entry.name !== versions.current)
+    dirs.push(...earlier.map(entry => `${versions.dir}/${entry.name}/${LOGS}`))
+  }
+  const listed = await Promise.all(
+    dirs.map(async dir => (await $.fs.list(dir).catch(() => [])).filter(entry => entry.name.endsWith(`.${SPEND}`)).map(entry => `${dir}/${entry.name}`)),
+  )
+  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...listed.flat()]
   const texts = await Promise.all(files.map(file => $.fs.read(file).catch(() => '')))
   return texts
     .flatMap(text => text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend))

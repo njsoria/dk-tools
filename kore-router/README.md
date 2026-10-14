@@ -261,6 +261,14 @@ npx -y tsx@4.19.2 eval/pushback.ts
 
 All of it is in [`routes.json`](routes.json).
 
+An installed plugin runs a copy that each update replaces, so don't edit the
+`routes.json` inside it. Copy it into Claude Code's data folder for the
+plugin, `~/.claude/plugins/data/kore-model-router-<marketplace>/routes.json`
+(for an install from this repository, `kore-model-router-dk-tools`), and edit
+that one: when it is there, the router reads it instead of its own. A copy run
+from its own folder (a folder marketplace, `--plugin-dir`) reads the
+`routes.json` beside it, as before.
+
 | Key | Meaning |
 | --- | --- |
 | `classifier` | `jev` or `haiku` |
@@ -292,7 +300,8 @@ runs `hooks/register.test.ts`, 41 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
-no model calls.
+no model calls. `hooks/config.test.ts` adds 4 for where the router keeps its
+logs and your `routes.json`.
 
 The CLI and the desktop app each carry their own copy of the engine, and the
 two are not always the same version: the desktop app's can offer hook fields
@@ -316,7 +325,7 @@ beside it.
 - `hooks/config.ts`: the types of `routes.json`, and its check.
 - `hooks/ledger.ts`: the log lines, and `/router savings`.
 - `hooks/pane.ts`: what the pane says about each decision.
-- `hooks/register.test.ts`: the tests.
+- `hooks/register.test.ts`, `hooks/config.test.ts`: the tests.
 - `eval/`: the labelled prompts and the accuracy runner.
 - `routes.json`: all configuration.
 - `logs/<session id>.routes.jsonl`: every decision of one session, which its
@@ -324,16 +333,21 @@ beside it.
 - `logs/<session id>.spend.jsonl`: one line per routed turn of one session,
   with tokens. `/router savings` adds up every session's file.
 
-Each session writes only its own files, so sessions running side by side can't
-overwrite each other. `logs/` is git-ignored and never trimmed. A
-`routes.spend.jsonl` left by an earlier version is still counted.
+`logs/` sits beside the plugin when it runs from its own folder, and in
+Claude Code's data folder for the plugin
+(`~/.claude/plugins/data/kore-model-router-<marketplace>/logs/`) when it is
+installed, so an update keeps it. Each session writes only its own files, so
+sessions running side by side can't overwrite each other. `logs/` is
+git-ignored and never trimmed. Logs an earlier installed version left in its
+own folder, and a `routes.spend.jsonl` from before each session had its own
+file, still count.
 
 ## Privacy
 
 The plugin runs on your machine and sends nothing to Kore. With the default
 classifier, the prompt and the last few messages go to TypeSafe to be sorted;
 set `"classifier": "haiku"` to keep that on your own Claude login. Its logs
-stay in `logs/`. The detail is in [PRIVACY.md](PRIVACY.md).
+stay on your machine, in `logs/`. The detail is in [PRIVACY.md](PRIVACY.md).
 
 ## License
 

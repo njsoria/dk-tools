@@ -49,7 +49,10 @@ and nothing goes to TypeSafe. No key is needed.
 
 ## What is kept on your machine
 
-Each session writes two files in the plugin's `logs/` folder:
+Each session writes two files in a `logs/` folder: in Claude Code's data
+folder for the plugin, `~/.claude/plugins/data/kore-model-router-<marketplace>/logs/`,
+when the plugin is installed, or beside the plugin when it runs from its own
+folder:
 
 - `<session id>.routes.jsonl`: each routing decision, with its time, the first
   2,000 characters of the prompt (120 for a subagent's task), the model and
@@ -60,7 +63,8 @@ Each session writes two files in the plugin's `logs/` folder:
 
 The pane and `/router savings` read these files. The plugin never sends them
 anywhere and never trims them. Delete `logs/` whenever you like; you lose the
-pane's history and the savings figures, nothing else.
+pane's history and the savings figures, nothing else. Logs an earlier
+installed version wrote in its own folder are read for `/router savings` too.
 
 Your TypeSafe key is kept in Claude Code's plugin settings, in secure
 storage, and the plugin reads it from there. It is used only to authorize
