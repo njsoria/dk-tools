@@ -6,6 +6,7 @@ Small tools for day-to-day work at DevKore. Each folder stands alone.
 
 | Tool | What it is |
 | --- | --- |
+| [Webhook Monitor](webhook-monitor) | A Railway service that gives a webhook an address to post to and shows each request live, timed in milliseconds from a click of yours, to measure a sender's delay |
 | [Kore Model Router](kore-router) | A Claude Code plugin that sends each prompt and each subagent to the model and effort its job deserves, with guards that raise a turn when quality is at risk |
 
 The repository is also a Claude Code plugin marketplace:
