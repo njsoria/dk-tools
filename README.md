@@ -8,6 +8,7 @@ Small tools for day-to-day work at DevKore. Each folder stands alone.
 | --- | --- |
 | [Webhook Monitor](webhook-monitor) | A Railway service that gives a webhook an address to post to and shows each request live, timed in milliseconds from a click of yours, to measure a sender's delay |
 | [Kore Model Router](kore-router) | A Claude Code plugin that sends each prompt and each subagent to the model and effort its job deserves, with guards that raise a turn when quality is at risk |
+| [Netlify usage](netlify-usage) | A command that tracks a Netlify team's credits, ranks the pain spots with an agent brief for each, and says which sites would cost less on Azure or AWS |
 
 The repository is also a Claude Code plugin marketplace:
 
