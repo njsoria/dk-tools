@@ -255,11 +255,11 @@ $('[data-sign-out]').addEventListener('click', async () => {
   view('door');
 });
 
-$('[data-arm]').addEventListener('submit', async event => {
-  event.preventDefault();
-  // Taken first thing: the moment of the click, on the server's clock.
+async function arm() {
+  // Taken first thing: the moment of the click or the key, on the server's clock.
   const clickedAt = Date.now() + offset;
-  const form = new FormData(event.target);
+  const form = new FormData($('[data-arm]'));
+  if (!$('[data-arm]').reportValidity()) return;
   try {
     addRun(await call('POST', '/api/arm', {
       seconds: Number(form.get('seconds')), label: String(form.get('label') ?? ''), clickedAt,
@@ -267,6 +267,22 @@ $('[data-arm]').addEventListener('submit', async event => {
   } catch (error) {
     $('[data-clock-what]').textContent = error.message;
   }
+}
+
+$('[data-arm]').addEventListener('submit', event => {
+  event.preventDefault();
+  void arm();
+});
+
+// Space arms from anywhere on the page but a text field, so the other hand
+// stays on the sender. Held down, it arms once. On a focused button it arms
+// instead of pressing that button, so it can never clear the runs by mistake.
+document.addEventListener('keydown', event => {
+  if (event.key !== ' ' || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  if ($('[data-view="desk"]').hidden) return;
+  event.preventDefault();
+  void arm();
 });
 
 $('[data-copy]').addEventListener('click', async event => {

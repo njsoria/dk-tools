@@ -1,7 +1,7 @@
 {
   "name": "dk-webhook-monitor",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Points a webhook at a page that shows when each request arrives, timed from the click that started a countdown.",
   "engines": {
