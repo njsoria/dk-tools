@@ -1,0 +1,20 @@
+{
+  "name": "dk-webhook-monitor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Points a webhook at a page that shows when each request arrives, timed from the click that started a countdown.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

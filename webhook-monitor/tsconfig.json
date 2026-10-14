@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // Node runs these files as they are, stripping the types, so nothing here
+    // may need compiling: no enums, no parameter properties, and imports name
+    // the .ts file.
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}
