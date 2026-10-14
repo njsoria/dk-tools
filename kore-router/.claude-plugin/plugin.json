@@ -3,6 +3,7 @@
   "version": "0.3.0",
   "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
   "license": "MIT",
+  "types": "./types/index.d.ts",
   "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-router",
   "repository": "https://github.com/njsoria/dk-tools",
   "author": {

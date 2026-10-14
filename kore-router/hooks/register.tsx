@@ -14,6 +14,7 @@
 // follows `$` only into functions declared here. The decisions themselves are
 // pure, in decide.ts and the modules beside it.
 
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
 import { type Effort, type Routes, check, model, tier } from './config'
@@ -29,6 +30,13 @@ const TAIL = 4
 // A prompt is routed when a person sent it, not when a notification did.
 const FROM_A_PERSON = new Set(['composer', 'bridge', 'sdk'])
 const LATE = Symbol('late')
+// The router's line under the prompt, held by the host: a write redraws the
+// hint that reads it, which a module variable and an invalidate did not always.
+const hint = atom({ plugin: 'kore-model-router', key: 'line' } as const, null)
+
+async function show($: EngineInterface, text: string | undefined) {
+  await update($, hint, () => text ?? null)
+}
 
 const load = async ($: EngineInterface) => check(JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes)
 
@@ -190,7 +198,8 @@ export const register: Register = on => {
   let chosen: Floor | undefined
   let floor: Floor | undefined
   let asked = ''
-  // The router's line under the prompt, which opens its pane when clicked.
+  // The router's line under the prompt, which opens its pane when clicked; the
+  // copy kept here only spares a write when it hasn't changed.
   let line: string | undefined
   // The conversation's last few lines, kept as they pass so routing never has
   // to read the whole transcript; read once only for a resumed session.
@@ -228,6 +237,7 @@ export const register: Register = on => {
     // The router changes what a session runs on, so it says it is there.
     $.ui.toast('Kore Model Router is on. /router off to turn it off.')
     line = 'router: on'
+    await show($, line)
 
     // A slow tick keeps the pane current should a redraw be missed.
     $.clock.every(3000, () => $.ui.invalidate('ui.render'))
@@ -295,19 +305,23 @@ export const register: Register = on => {
     )
   })
 
-  // The line under the prompt keeps the engine's own hints and adds the
-  // router's route, as a button that opens the pane.
+  // The line under the prompt leads with the router's route, as a button that
+  // opens the pane, and keeps the engine's own hints after it.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    if (line === undefined) return next(e)
+    const line = await read($, hint)
+    if (line === null) return next(e)
     const { Box, Button } = $.ui.resolve(e)
-    const open = () => {
-      void $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
+    // A click opens the pane, or closes it when it is already up.
+    const open = async () => {
+      const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
+      if (isUp) await $.ui.close({ id: PANE })
+      else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
     }
 
     return (
       <Box columnGap={2}>
-        {await next(e)}
         <Button key="router-line" plain dimColor label={line} onPress={open} />
+        {await next(e)}
       </Box>
     )
   })
@@ -337,7 +351,7 @@ export const register: Register = on => {
         // Routing must never be why a prompt fails: the last route stands, or
         // the session's own model when there has been none.
         line = `router: no new route (${(error as Error).message})`
-        $.ui.invalidate('ui.render')
+        await show($, line)
         await record($, { prompt: asked, failed: (error as Error).message })
       }
       remember('user', e.text)
@@ -453,7 +467,7 @@ export const register: Register = on => {
     const said = route === undefined ? line : `router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`
     if (said !== line) {
       line = said
-      $.ui.invalidate('ui.render')
+      await show($, line)
     }
 
     const result = yield* next(route === undefined ? e : { ...e, model: route.model, effort: route.effort })
@@ -492,7 +506,7 @@ export const register: Register = on => {
     if (args === 'on' || args === 'off') {
       isOn = args === 'on'
       line = isOn ? 'router: on' : undefined
-      $.ui.invalidate('ui.render')
+      await show($, line)
       return { text: `Router is ${args}.` }
     }
     // `open` too: the word people reach for.

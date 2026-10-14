@@ -411,13 +411,21 @@ for (const surface of ['terminal', 'desktop'] as const) {
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`clicking the router's line under the prompt opens its pane (${surface})`, async ($, on) => {
+  test(`clicking the router's line under the prompt opens its pane, and again closes it (${surface})`, async ($, on) => {
     world(on, { answers: jev('build', 0.9, 1.2) })
     const opened: string[] = []
+    const closed: string[] = []
     on('ui.open', ($, e) => {
       opened.push(e.id)
       return { value: { isPlaced: true as const } }
     })
+    on('ui.close', ($, e) => {
+      closed.push(e.id)
+      return { value: undefined }
+    })
+    on('ui.panes', () => ({
+      value: opened.length > closed.length ? [{ id: 'router', title: 'Kore Model Router', isShown: true, isFocused: true, isPlaced: true }] : [],
+    }))
     // The engine's own hint line, which the router's sits beside.
     on('ui.render', { component: 'PromptHint' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.hint }))
     await ask($, 'add a --json flag')
@@ -431,6 +439,26 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await hint.find({ text: '? for shortcuts' })).toBeDefined()
     await hint.press({ key: 'router-line' })
     expect(opened).toEqual(['router'])
+    await hint.press({ key: 'router-line' })
+    expect(closed).toEqual(['router'])
+  })
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`the line under the prompt follows each new route (${surface})`, async ($, on) => {
+    const { answering } = world(on, { answers: jev('build', 0.9, 1.2) })
+    on('ui.render', { component: 'PromptHint' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.hint }))
+    await ask($, 'add a --json flag')
+    const hint = await $.ui.mount({
+      plugin: 'kore-model-router',
+      surface,
+      component: 'PromptHint',
+      props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+    })
+    expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: sonnet · medium' })
+    answering(jev('design', 0.95, 2))
+    await ask($, 'the export crashes on an empty table, find out why')
+    expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: expect.stringMatching(/^router: opus/) })
   })
 }
 
