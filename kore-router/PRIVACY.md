@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated 13 October 2026.
+Last updated 14 October 2026.
 
 Kore Model Router is a Claude Code plugin that runs on your machine. Kore LLC,
 which publishes it, receives nothing from it: the plugin has no analytics, no
@@ -62,9 +62,9 @@ The pane and `/router savings` read these files. The plugin never sends them
 anywhere and never trims them. Delete `logs/` whenever you like; you lose the
 pane's history and the savings figures, nothing else.
 
-Your TypeSafe key is read from the environment or from a `.env` file beside
-`routes.json`. It is used only to authorize requests to TypeSafe and is never
-written to a log.
+Your TypeSafe key is kept in Claude Code's plugin settings, in secure
+storage, and the plugin reads it from there. It is used only to authorize
+requests to TypeSafe and is never written to a log.
 
 ## The accuracy eval
 

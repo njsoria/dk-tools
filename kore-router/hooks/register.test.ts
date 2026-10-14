@@ -1,6 +1,11 @@
 import type { On, TurnStepInput } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import { expect, mock, test as engineTest } from 'claude-code/testing'
+import type { Engine, TestBody } from 'claude-code/testing'
+
+// Every test but one runs with a TypeSafe key in the plugin's settings, as a
+// person who set one does.
+const KEY = { typesafe_api_key: 'test-key' }
+const test = (name: string, body: TestBody) => engineTest(name, { options: KEY }, body)
 
 const PRICING = {
   'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.2 },
@@ -55,7 +60,6 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
   const find = (path: string) => Object.keys(files).find(name => path.endsWith(name))
   const asked = { jev: 0, haiku: 0 }
   let answer = answers
-  mock.env(on, { TYPESAFE_API_KEY: 'test-key' })
   mock.clock(on)
   on('fs.read', ($, e) => {
     if (e.path.endsWith('routes.json')) return { value: JSON.stringify(routes) }
@@ -201,6 +205,13 @@ test('a short question is still classified', async ($, on) => {
 test('a failed classifier leaves the request as the session set it', async ($, on) => {
   const { sent } = world(on, { status: 401 })
   await ask($, 'add a --json flag')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+engineTest('without a TypeSafe key, Jev is never asked and the request runs as the session set it', async ($, on) => {
+  const { sent, asked } = world(on, { answers: jev('build', 0.9, 1.2) })
+  await ask($, 'add a --json flag')
+  expect(asked.jev).toBe(0)
   expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
 })
 

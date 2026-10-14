@@ -1,12 +1,10 @@
-<img src="assets/logo.svg" alt="Kore Model Router" width="96" height="96" align="left">
+![Kore Model Router](assets/logo.svg)
 
 # Kore Model Router
 
 A Claude Code plugin that sends each prompt, and each subagent, to the model
 and effort its job deserves. Leave your session on your strongest model and
 stop paying for it on small jobs, without risking the big ones.
-
-<br clear="left">
 
 For every prompt you type and every subagent the session starts, the router
 picks a model (Haiku, Sonnet or Opus) and an effort level and applies them to
@@ -29,15 +27,14 @@ Then start a new session. The router says it is on with a toast, and
 clicking `router: on` (set `"openPane": true` in `routes.json` to open it with
 every session).
 
-To classify with Jev (the default), add a TypeSafe API key, either to the
-environment or to a `.env` file beside `routes.json`:
-
-```bash
-TYPESAFE_API_KEY=...
-```
+To classify with Jev (the default), give the plugin a TypeSafe API key.
+Claude Code asks for it when you enable the plugin and keeps it in secure
+storage; change it later under `/config`, in the plugin's
+`typesafe_api_key` field.
 
 Without a key, set `"classifier": "haiku"` in `routes.json` to classify on
-your own Claude login instead.
+your own Claude login instead. With neither, prompts run as your session set
+them.
 
 To run a copy you are working on, point Claude Code at its folder:
 
@@ -291,7 +288,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 40 tests that read as the router's
+runs `hooks/register.test.ts`, 41 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
