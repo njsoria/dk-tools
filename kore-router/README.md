@@ -24,9 +24,9 @@ has, so the IDE extensions should show it too, though that is untested.
 /plugin install kore-model-router@dk-tools
 ```
 
-Then start a new session. The router says it is on with a toast, `router: on`
-appears in the line under the prompt. Open its pane with `/router pane` or by
-clicking that line (set `"openPane": true` in `routes.json` to open it with
+Then start a new session. The router says it is on with a toast, and
+`router: on` appears under the prompt. Open its pane with `/router pane` or by
+clicking `router: on` (set `"openPane": true` in `routes.json` to open it with
 every session).
 
 To classify with Jev (the default), add a TypeSafe API key, either to the
@@ -175,10 +175,12 @@ prompt, what the classifier asked for, what ran, why, what the session had
 selected, the message count and how long routing took. **Open all** and
 **Close all** do every row at once.
 
-The line under the prompt shows the route in force (`router: sonnet · medium`,
-with the reason when a guard changed it). Click it to open the pane, or run
-`/router pane`. That line is drawn in the CLI and the desktop app; other
-surfaces don't draw it yet.
+The route in force shows under the prompt (`router: sonnet · medium`, with the
+reason when a guard changed it). In the CLI it leads the hint line under the
+prompt. The desktop app doesn't draw that hint line, so there the route sits in
+the footer under the input bar, beside the session's mode labels; a long one is
+cut short, with the rest in its tooltip. Click it in either to open the pane,
+and again to close it, or run `/router pane`. Other surfaces don't show it yet.
 
 ## Commands
 
@@ -289,7 +291,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 36 tests that read as the router's
+runs `hooks/register.test.ts`, 40 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and

@@ -462,6 +462,46 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
+test('the desktop shows the route under its input bar, beside the mode labels, and follows each new route', async ($, on) => {
+  const { answering } = world(on, { answers: jev('build', 0.9, 1.2) })
+  const opened: string[] = []
+  on('ui.open', ($, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  on('ui.panes', () => ({ value: [] }))
+  // The engine's own mode labels, which the router's button sits beside.
+  on('ui.render', { component: 'SessionMode' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.modes.join(' & ') }))
+  await ask($, 'add a --json flag')
+  const footer = await $.ui.mount({
+    plugin: 'kore-model-router',
+    surface: 'desktop',
+    component: 'SessionMode',
+    props: { modes: ['focus'] },
+  })
+  expect((await footer.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: sonnet · medium' })
+  expect(await footer.find({ text: 'focus' })).toBeDefined()
+  await footer.press({ key: 'router-line' })
+  expect(opened).toEqual(['router'])
+  answering(jev('design', 0.95, 2))
+  await ask($, 'the export crashes on an empty table, find out why')
+  expect((await footer.find({ key: 'router-line' }))?.props).toMatchObject({ label: expect.stringMatching(/^router: opus/) })
+})
+
+test("the terminal's mode labels are left to the engine, since its hint line shows the route", async ($, on) => {
+  world(on, { answers: jev('build', 0.9, 1.2) })
+  on('ui.render', { component: 'SessionMode' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.modes.join(' & ') }))
+  await ask($, 'add a --json flag')
+  const footer = await $.ui.mount({
+    plugin: 'kore-model-router',
+    surface: 'terminal',
+    component: 'SessionMode',
+    props: { modes: ['focus'] },
+  })
+  expect(await footer.find({ key: 'router-line' })).toBeUndefined()
+  expect(await footer.find({ text: 'focus' })).toBeDefined()
+})
+
 test('/router open opens the pane, as /router pane does', async ($, on) => {
   world(on)
   const opened: string[] = []

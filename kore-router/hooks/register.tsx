@@ -38,6 +38,13 @@ async function show($: EngineInterface, text: string | undefined) {
   await update($, hint, () => text ?? null)
 }
 
+// A click on the router's line opens the pane, or closes it when it is up.
+async function togglePane($: EngineInterface) {
+  const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
+  if (isUp) await $.ui.close({ id: PANE })
+  else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
+}
+
 const load = async ($: EngineInterface) => check(JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes)
 
 // Sessions the desktop app starts don't always see the shell's environment,
@@ -305,22 +312,33 @@ export const register: Register = on => {
     )
   })
 
-  // The line under the prompt leads with the router's route, as a button that
-  // opens the pane, and keeps the engine's own hints after it.
+  // The terminal's line under the prompt leads with the router's route, as a
+  // button that opens the pane, and keeps the engine's own hints after it.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const line = await read($, hint)
     if (line === null) return next(e)
     const { Box, Button } = $.ui.resolve(e)
-    // A click opens the pane, or closes it when it is already up.
-    const open = async () => {
-      const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
-      if (isUp) await $.ui.close({ id: PANE })
-      else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
-    }
 
     return (
       <Box columnGap={2}>
-        <Button key="router-line" plain dimColor label={line} onPress={open} />
+        <Button key="router-line" plain dimColor label={line} onPress={() => togglePane($)} />
+        {await next(e)}
+      </Box>
+    )
+  })
+
+  // The desktop app never asks for the hint line. Under its input bar it draws
+  // the session's mode labels, so there the route is the same button beside
+  // them. The terminal's mode labels are left alone: its hint line has it.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    if (e.surface === 'terminal') return next(e)
+    const line = await read($, hint)
+    if (line === null) return next(e)
+    const { Box, Button } = $.ui.resolve(e)
+
+    return (
+      <Box columnGap={1}>
+        <Button key="router-line" plain dimColor label={line} onPress={() => togglePane($)} />
         {await next(e)}
       </Box>
     )
