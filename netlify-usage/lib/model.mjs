@@ -177,8 +177,8 @@ function verdict(s, cfg, { monthly, plan, bar }) {
 
 const SEVERITY = { high: 0, medium: 1, low: 2 }
 
-// Each pain spot carries a brief: a prompt that can start an agent on it
-// without this report beside it.
+// Each pain spot carries a key that stays the same from run to run, and a
+// brief: a prompt that can start an agent on it without this report beside it.
 function painSpots(snap, a, { perDeploy, now }) {
   const { plan, period: p } = a
   const spots = []
@@ -191,6 +191,7 @@ function painSpots(snap, a, { perDeploy, now }) {
     const packs = a.thisPeriod.morePacks
     spots.push({
       severity: !plan.autoTopup || days < 7 ? 'high' : 'medium',
+      key: 'run-out',
       title: `Credits run out around ${day(a.runOut)}`,
       detail: plan.autoTopup
         ? `${n(a.available)} left at ${n(a.perDay)} a day. Auto top-up will buy about ${packs} more ${packs === 1 ? 'pack' : 'packs'} (${usd(packs * packPrice(plan))}) before ${day(p.end)}.`
@@ -207,31 +208,44 @@ function painSpots(snap, a, { perDeploy, now }) {
     const gbHours = days.length ? days.reduce((t, d) => t + (d.usage?.db_compute || 0), 0) / days.length : null
     const minGB = Math.min(...dbSites.map((s) => (s.database.minCU ?? 0.25) * GB_PER_CU))
     const awake = gbHours != null ? gbHours / 24 / minGB : null
-    // A snapshot taken at a quiet hour shows which database never sleeps.
+    // Samples taken through the day (database.awakeShare) name the database
+    // that never sleeps. A single snapshot only says what it saw just then.
     const list = dbSites
       .map((s) => {
         const d = s.database
         const facts = [
-          d.awake != null && (d.awake ? 'awake' : 'asleep') + ' at this snapshot',
+          d.awakeShare != null
+            ? `awake ${pct(d.awakeShare)} of ${d.awakeWindow}`
+            : d.awake != null && (d.awake ? 'awake' : 'asleep') + ' at this snapshot',
           d.sleepSeconds && `sleeps after ${d.sleepSeconds}s idle`,
           d.branches > 1 && `${d.branches} branches`,
         ].filter(Boolean)
         return facts.length ? `${s.name} (${facts.join(', ')})` : s.name
       })
       .join(', ')
+    const always = dbSites.filter((s) => (s.database.awakeShare ?? 0) >= 0.9).map((s) => s.name)
+    const which = always.length
+      ? ` Samples show ${always.join(' and ')} awake nearly all the time.`
+      : " Netlify doesn't say which database."
     const size =
       awake != null
         ? ` That is ${gbHours.toFixed(0)} GB-hours a day, as much as ${awake < 1.5 ? 'one database' : `${awake.toFixed(1)} databases`} at minimum size awake around the clock.`
         : ''
     spots.push({
       severity: severity(db.monthly),
-      title: `Database compute: ${n(db.perDay)} credits a day`,
-      detail: `${pct(db.share)} of all credits, ${cost(db.monthly)} a month at the pack price.${size} Netlify doesn't say which database. Sites with one: ${list}.`,
+      key: 'database-compute',
+      title: always.length
+        ? `Database compute: ${always.join(' and ')} never ${always.length === 1 ? 'sleeps' : 'sleep'}, ${n(db.perDay)} credits a day`
+        : `Database compute: ${n(db.perDay)} credits a day`,
+      detail: `${pct(db.share)} of all credits, ${cost(db.monthly)} a month at the pack price.${size}${which} Sites with one: ${list}.`,
       credits: db.monthly,
       brief:
         `On ${team}, Netlify Database compute costs about ${n(db.perDay)} credits a day (${cost(db.monthly)} a month at the pack price), ` +
-        `${pct(db.share)} of the team's credits.${size} Sites with a database: ${list}. ` +
-        'Find which database stays awake and what keeps waking it: scheduled or background functions, polling, open connections, health checks. ' +
+        `${pct(db.share)} of the team's credits.${size}${which} Sites with a database: ${list}. ` +
+        (always.length
+          ? `Find what keeps ${always.join(' and ')}'s database awake: `
+          : 'Find which database stays awake and what keeps waking it: ') +
+        'scheduled or background functions, polling, open connections, health checks. ' +
         'Then propose the change that lets it sleep. Production stays read-only until Nate approves a change.',
     })
   }
@@ -240,6 +254,7 @@ function painSpots(snap, a, { perDeploy, now }) {
     const where = s.repo ? ` (${s.repo.replace('https://github.com/', '')})` : ''
     spots.push({
       severity: severity(s.credits),
+      key: `deploys:${s.name}`,
       title: `${s.name}: ${s.deploysPerDay.toFixed(1)} production deploys a day`,
       detail: `${n(s.credits)} credits a month at ${perDeploy} a deploy, ${cost(s.credits)} at the pack price. Deploy previews are free.`,
       credits: s.credits,
@@ -256,6 +271,7 @@ function painSpots(snap, a, { perDeploy, now }) {
     const alt = s.alternatives[0]
     spots.push({
       severity: 'medium',
+      key: `move:${s.name}`,
       title: `Move ${s.name} to ${alt.name}`,
       detail: `${s.reason}.`,
       credits: s.credits,
@@ -269,6 +285,7 @@ function painSpots(snap, a, { perDeploy, now }) {
   if (a.steady.packs > 0) {
     spots.push({
       severity: 'low',
+      key: 'monthly-cost',
       title: `Netlify runs ${usd(a.steady.total)} a month at this pace`,
       detail: `${n(a.monthly)} credits a month against ${n(plan.includedCredits)} in the plan: ${usd(a.steady.total - plan.base)} of packs on top of ${usd(plan.base)}.`,
       credits: a.monthly,

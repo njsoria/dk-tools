@@ -98,6 +98,19 @@ async function databaseBranches(get, siteId) {
 
 const numbers = (o = {}) => ({ used: Number(o.used || 0), available: Number(o.available || 0), total: Number(o.total || 0) })
 
+// A cheap check, made every few minutes: is each production database awake?
+// Reading the branch list doesn't wake a database.
+export async function sampleDatabases() {
+  const get = client(readToken())
+  const sites = await get('sites?filter=all&per_page=100')
+  const withDb = sites.filter((s) => s.has_database)
+  const states = await Promise.all(withDb.map((s) => databaseBranches(get, s.id)))
+  return {
+    at: new Date().toISOString(),
+    databases: Object.fromEntries(withDb.map((s, i) => [s.name, states[i].awake ?? null])),
+  }
+}
+
 export async function collect({ team } = {}) {
   const get = client(readToken())
   const accounts = await get('accounts')

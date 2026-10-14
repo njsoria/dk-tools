@@ -92,9 +92,16 @@ before the verdict says MOVE: $20 a month by default.
 | Move | A site's verdict is MOVE |
 | Monthly cost | A month at this pace costs more than the plan |
 
-High means 30% or more of the plan's credits a month, medium 15%. A spot that
-needs work has a brief: a prompt that states the numbers, the sites and the
-question, so an agent can start on it with nothing else.
+High means 30% or more of the plan's credits a month, medium 15%. Each spot
+has a `key` that stays the same from run to run (`database-compute`,
+`deploys:<site>`). A spot that needs work has a brief: a prompt that states
+the numbers, the sites and the question, so an agent can start on it with
+nothing else.
+
+`sampleDatabases()` in `lib/netlify.mjs` checks only whether each production
+database is awake. Called every few minutes by a server, its samples set
+`database.awakeShare` on a snapshot, and the database spot then names the
+database that never sleeps.
 
 ## Notes the API can't know
 
