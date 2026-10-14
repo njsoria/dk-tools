@@ -86,6 +86,10 @@ input:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px 
 
 .arm { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; }
 .arm .button { padding: 0.65rem 2rem; font-size: 1.05rem; }
+kbd {
+  font: 600 0.75em var(--mono); margin-left: 0.4rem; padding: 0.1rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 40%, transparent); border-radius: 3px;
+}
 
 .clock { margin-top: 1rem; }
 .clock__time { font: 700 clamp(2.75rem, 12vw, 5.5rem)/1 var(--mono); font-variant-numeric: tabular-nums; }

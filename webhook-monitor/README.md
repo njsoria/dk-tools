@@ -11,7 +11,8 @@ nothing with the rest of this repository, so it is a Railway service of its own.
 
 ## How it works
 
-1. **Arm** takes a number of seconds and an optional label. The time of your
+1. **Arm** (or the space bar, anywhere on the page outside a text field) takes
+   a number of seconds and an optional label. The time of your
    click is measured on your computer's clock and moved onto the server's (the
    page times five round trips and uses the quickest), so the time the click
    took to reach the server is not counted against the sender.
@@ -70,7 +71,8 @@ function, a callback URL), point a copy of it at the monitor, leaving its
 `Authorization` line off. Then, for each trial:
 
 1. Pick a label (`Interested, rep 1`) and the seconds you'll allow (120).
-2. Press **Arm** as you press the button that makes the sender send.
+2. Press **Arm**, or the space bar, as you press the button that makes the
+   sender send.
 3. Watch the card appear. **+x s** is the delay from your click to the monitor.
    The payload's own times, if it carries any, show against arrival.
 
