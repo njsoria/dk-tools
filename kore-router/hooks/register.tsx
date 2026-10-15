@@ -15,9 +15,9 @@
 // pure, in decide.ts and the modules beside it.
 
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
-import { type Effort, type Routes, check, model, tier } from './config'
+import { type Effort, type Routes, check, dataDir, model, tier, versionsDir } from './config'
 import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, isThin, keepRoute, routeTask, settle } from './decide'
 import { type Entry, type Spend, savings } from './ledger'
 import { LIME, details, firstLine, summary } from './pane'
@@ -45,15 +45,20 @@ async function togglePane($: EngineInterface) {
   else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
 }
 
-const load = async ($: EngineInterface) => check(JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes)
+// A person's own routes.json in the data folder stands in for the one the
+// plugin ships, which an update replaces.
+async function load($: EngineInterface) {
+  const own = `${dataDir($.plugin.root)}/routes.json`
+  const text = await $.fs.read(own).catch(() => $.fs.read(`${$.plugin.root}/routes.json`))
+  return check(JSON.parse(text) as Routes)
+}
 
-// Sessions the desktop app starts don't always see the shell's environment,
-// so the key can also sit in a .env file beside routes.json.
-async function typesafeKey($: EngineInterface) {
-  const fromEnv = await $.env.get('TYPESAFE_API_KEY')
-  if (fromEnv !== undefined) return fromEnv
-  const file = await $.fs.read(`${$.plugin.root}/.env`).catch(() => '')
-  return /^TYPESAFE_API_KEY=(.+)$/m.exec(file)?.[1]?.trim()
+// The TypeSafe key comes from the plugin's own settings: Claude Code asks for
+// it when the plugin is enabled and keeps it in secure storage, and every
+// surface sees it, where a shell variable reached only some of them.
+function typesafeKey(options: PluginOptions) {
+  const key = options.typesafe_api_key
+  return typeof key === 'string' && key.trim() !== '' ? key.trim() : undefined
 }
 
 // $.http.fetch has no time limit of its own.
@@ -75,9 +80,8 @@ async function within<T>($: EngineInterface, ms: number, work: Promise<T>) {
 // What came before a request, as the classifier reads it.
 type Rows = readonly { role: string; text: string }[]
 
-async function askJev($: EngineInterface, routes: Routes, text: string, rows: Rows): Promise<Verdict> {
-  const key = await typesafeKey($)
-  if (key === undefined) throw new Error('TYPESAFE_API_KEY is not set')
+async function askJev($: EngineInterface, routes: Routes, text: string, rows: Rows, key: string | undefined): Promise<Verdict> {
+  if (key === undefined) throw new Error('no TypeSafe key is set')
   const reply = await within(
     $,
     routes.timeoutMs,
@@ -109,7 +113,7 @@ async function askHaiku($: EngineInterface, routes: Routes, text: string, rows: 
 // task, raised by any `atLeast` rule the text matched. The request alone
 // misleads on a reply, so the classifier also reads `rows`, what came just
 // before it; a subagent's task stands alone, with none.
-async function decide($: EngineInterface, routes: Routes, text: string, rows: Rows, previous?: Route): Promise<Route & { ms?: number }> {
+async function decide($: EngineInterface, routes: Routes, key: string | undefined, text: string, rows: Rows, previous?: Route): Promise<Route & { ms?: number }> {
   const { decided, raises } = byRules(routes, text)
   if (decided !== undefined) return decided
   const followUp = routes.guards?.followUp
@@ -120,7 +124,7 @@ async function decide($: EngineInterface, routes: Routes, text: string, rows: Ro
     return keepRoute(routes, previous, raises, 'too short to classify, so the route in force')
   }
   const started = await $.clock.now()
-  const verdict = routes.classifier === 'haiku' ? await askHaiku($, routes, text, rows) : await askJev($, routes, text, rows)
+  const verdict = routes.classifier === 'haiku' ? await askHaiku($, routes, text, rows) : await askJev($, routes, text, rows, key)
   return { ...fromVerdict(routes, verdict, raises), ms: Math.round((await $.clock.now()) - started) }
 }
 
@@ -134,7 +138,7 @@ const SPEND = 'spend.jsonl'
 // The one spend file every session shared before each had its own.
 const OLD_SPEND = 'routes.spend.jsonl'
 
-const logFile = async ($: EngineInterface, kind: string) => `${$.plugin.root}/${LOGS}/${await $.session.id()}.${kind}`
+const logFile = async ($: EngineInterface, kind: string) => `${dataDir($.plugin.root)}/${LOGS}/${await $.session.id()}.${kind}`
 
 // One write at a time, so two of this session's lines can't rewrite each other.
 let writing: Promise<unknown> = Promise.resolve()
@@ -174,11 +178,19 @@ async function recent($: EngineInterface, count: number) {
     .reverse()
 }
 
-// Every routed turn of every session, oldest first.
+// Every routed turn of every session, oldest first: those in the data folder,
+// and those an earlier installed version left in its own logs/.
 async function spent($: EngineInterface) {
-  const dir = `${$.plugin.root}/${LOGS}`
-  const names = (await $.fs.list(dir).catch(() => [])).map(entry => entry.name).filter(name => name.endsWith(`.${SPEND}`))
-  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...names.map(name => `${dir}/${name}`)]
+  const dirs = [`${dataDir($.plugin.root)}/${LOGS}`]
+  const versions = versionsDir($.plugin.root)
+  if (versions !== undefined) {
+    const earlier = (await $.fs.list(versions.dir).catch(() => [])).filter(entry => entry.kind === 'dir' && entry.name !== versions.current)
+    dirs.push(...earlier.map(entry => `${versions.dir}/${entry.name}/${LOGS}`))
+  }
+  const listed = await Promise.all(
+    dirs.map(async dir => (await $.fs.list(dir).catch(() => [])).filter(entry => entry.name.endsWith(`.${SPEND}`)).map(entry => `${dir}/${entry.name}`)),
+  )
+  const files = [`${$.plugin.root}/${OLD_SPEND}`, ...listed.flat()]
   const texts = await Promise.all(files.map(file => $.fs.read(file).catch(() => '')))
   return texts
     .flatMap(text => text.split('\n').filter(Boolean).map(line => JSON.parse(line) as Spend))
@@ -190,7 +202,8 @@ const say = (route: Route) => `${route.name} · ${route.effort} (${route.via})`
 // prompt look an hour apart.
 const median = (list: number[]) => (list.length === 0 ? undefined : [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)])
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const key = typesafeKey(options)
   let isOn = true
   let routes: Routes | undefined
   // The route the newest prompt earned, and what each running turn began on:
@@ -362,7 +375,7 @@ export const register: Register = on => {
           tail.push(...(await $.session.messages()).map(row => ({ role: row.role, text: row.text })).filter(row => clean(row.text) !== '').slice(-TAIL))
         }
         isTailRead = true
-        const decided = await decide($, routes, e.text, tail, latest)
+        const decided = await decide($, routes, key, e.text, tail, latest)
         timing = { classifyMs: decided.ms, routeMs: Math.round((await $.clock.now()) - at) }
         latest = decided
       } catch (error) {
@@ -393,7 +406,7 @@ export const register: Register = on => {
       current = await load($)
       const typed = current.subagents?.types?.[e.subagentType]
       if (typed !== undefined) wanted = routeTask(current, typed, undefined, `${e.subagentType} agents`)
-      else if (current.subagents?.classify !== false) wanted = await decide($, current, `${e.description}\n\n${e.prompt}`, [])
+      else if (current.subagents?.classify !== false) wanted = await decide($, current, key, `${e.description}\n\n${e.prompt}`, [])
       else return next(e)
     } catch (error) {
       await record($, { prompt: task, failed: (error as Error).message, agent: e.subagentType })
@@ -562,7 +575,7 @@ export const register: Register = on => {
       return { text: `Router is ${isOn ? 'on' : 'off'}.${last}${held}` }
     }
     try {
-      return { text: say(await decide($, await load($), args, tail)) }
+      return { text: say(await decide($, await load($), key, args, tail)) }
     } catch (error) {
       return { text: `No route: ${(error as Error).message}` }
     }
