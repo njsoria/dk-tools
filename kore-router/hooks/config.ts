@@ -126,13 +126,28 @@ export const price = (routes: Routes, id: string) => routes.pricing?.[id] ?? rou
 // replaces. What must outlive an update, the logs and a person's own
 // routes.json, goes to the folder Claude Code keeps for the plugin's data,
 // plugins/data/<plugin>-<marketplace>. A plugin run from its own folder (a
-// folder marketplace, --plugin-dir) keeps them beside it.
+// folder marketplace, --plugin-dir) keeps its logs beside it.
 const INSTALLED = /^(.*)[\\/]plugins[\\/]cache[\\/]([^\\/]+)[\\/]([^\\/]+)[\\/]([^\\/]+)[\\/]?$/
 
 export function dataDir(root: string) {
   const at = INSTALLED.exec(root)
   return at === null ? root : `${at[1]}/plugins/data/${`${at[3]}-${at[2]}`.replace(/[^\w-]/g, '-')}`
 }
+
+// A person's own routes.json lives in Claude Code's data folder for the plugin
+// however it runs, so it stays out of the plugin's folder and out of git. A
+// plugin run from its own folder has no marketplace in its path: it is the one
+// that lists it (`marketplace`), or `inline` for --plugin-dir, as Claude Code
+// names it.
+export function ownRoutes(root: string, plugin: { name: string; claudeDir: string; marketplace?: string }) {
+  if (INSTALLED.test(root)) return `${dataDir(root)}/routes.json`
+  const folder = `${plugin.name}-${plugin.marketplace ?? 'inline'}`.replace(/[^\w-]/g, '-')
+  return `${plugin.claudeDir}/plugins/data/${folder}/routes.json`
+}
+
+// Own settings name only what they change: each top-level key replaces the
+// shipped one, so `{ "enabled": true }` alone turns the router on.
+export const merge = (shipped: Routes, own: Partial<Routes>): Routes => ({ ...shipped, ...own })
 
 // The folder holding every installed version, whose logs/ earlier versions wrote.
 export function versionsDir(root: string) {

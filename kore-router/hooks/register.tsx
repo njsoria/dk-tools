@@ -17,7 +17,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
-import { type Effort, type Routes, check, dataDir, model, tier, versionsDir } from './config'
+import { type Effort, type Routes, check, dataDir, merge, model, ownRoutes, tier, versionsDir } from './config'
 import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, isThin, keepRoute, routeTask, settle } from './decide'
 import { type Entry, type Spend, savings } from './ledger'
 import { LIME, details, firstLine, summary } from './pane'
@@ -45,12 +45,26 @@ async function togglePane($: EngineInterface) {
   else await $.ui.open({ id: PANE, title: 'Kore Model Router', focus: true })
 }
 
-// A person's own routes.json in the data folder stands in for the one the
-// plugin ships, which an update replaces.
+// A person's own routes.json, in Claude Code's data folder, goes over the one
+// the plugin ships, which an update replaces. Without one, or without a home
+// folder to find it in, the shipped one runs as it is.
 async function load($: EngineInterface) {
-  const own = `${dataDir($.plugin.root)}/routes.json`
-  const text = await $.fs.read(own).catch(() => $.fs.read(`${$.plugin.root}/routes.json`))
-  return check(JSON.parse(text) as Routes)
+  const shipped = JSON.parse(await $.fs.read(`${$.plugin.root}/routes.json`)) as Routes
+  const file = await ownFile($)
+  const text = file === undefined ? undefined : await $.fs.read(file).catch(() => undefined)
+  return check(text === undefined ? shipped : merge(shipped, JSON.parse(text) as Partial<Routes>))
+}
+
+async function ownFile($: EngineInterface) {
+  const home = await $.env.get('HOME')
+  const claudeDir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? (home === undefined ? undefined : `${home}/.claude`)
+  if (claudeDir === undefined) return undefined
+  // Run from its folder, the plugin's marketplace is the one beside it.
+  const marketplace = await $.fs
+    .read(`${$.plugin.root.replace(/[\\/][^\\/]+[\\/]?$/, '')}/.claude-plugin/marketplace.json`)
+    .then(text => (JSON.parse(text) as { name?: string }).name)
+    .catch(() => undefined)
+  return ownRoutes($.plugin.root, { name: $.plugin.name, claudeDir, marketplace })
 }
 
 // The TypeSafe key comes from the plugin's own settings: Claude Code asks for
