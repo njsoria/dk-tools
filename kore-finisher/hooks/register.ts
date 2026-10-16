@@ -150,6 +150,8 @@ async function outstanding($: EngineInterface) {
     Promise.all(names.filter(name => name.endsWith(`.${suffix}`)).map(name => $.fs.read(`${dir}/${name}`).catch(() => '')))
   const now = await $.clock.now()
   const mine = await $.session.id()
+  // The desktop app already links "owner/repo #N", so a URL line there is a second link to the same PR.
+  const linksRefs = (await $.session.surfaces()).includes('desktop')
 
   const waits = parseEach<Wait>(await read(WAITING)).filter(wait => wait.state === 'waiting' && now - Date.parse(wait.updated) < STALE_AFTER)
 
@@ -178,7 +180,7 @@ async function outstanding($: EngineInterface) {
       return {
         surface: from === undefined ? undefined : from.surface,
         at: pr.updatedAt,
-        lines: [`  \u25cb ${head.join(' \u00b7 ')}`, `      ${clip(pr.title, 120)}`, `      ${pr.url}`],
+        lines: [`  \u25cb ${head.join(' \u00b7 ')}`, `      ${clip(pr.title, 120)}`, ...(linksRefs ? [] : [`      ${pr.url}`])],
       }
     }),
   ]
