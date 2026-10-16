@@ -254,9 +254,23 @@ export const register: Register = (on, options) => {
       argumentHint: '[on | off | pane (or open) | floor <model> | floor off | savings [model | session] | a prompt to try]',
     })
 
-    // The router changes what a session runs on, so it says it is there.
-    $.ui.toast('Kore Model Router is on. /router off to turn it off.')
-    line = 'router: on'
+    // `"enabled": false` in routes.json starts sessions with the router off.
+    // A routes.json that can't be read leaves it on, as before; the prompts
+    // then run as the session set them.
+    try {
+      if ((await load($)).enabled === false) isOn = false
+    } catch {
+      // Same as a broken file at any other time.
+    }
+
+    // The router changes what a session runs on, so it says what it is doing.
+    if (isOn) {
+      $.ui.toast('Kore Model Router is on. /router off to turn it off.')
+      line = 'router: on'
+    } else {
+      $.ui.toast('Kore Model Router is off. /router on to turn it on.')
+      line = undefined
+    }
     await show($, line)
 
     // A slow tick keeps the pane current should a redraw be missed.

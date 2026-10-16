@@ -27,6 +27,8 @@ export type Routes = {
   classifier: 'jev' | 'haiku'
   minConfidence: number
   timeoutMs: number
+  // Whether a session starts with the router on. Default true; `/router on` and `/router off` change it for one session.
+  enabled?: boolean
   openPane?: boolean
   baseline?: { model: string; effort: Effort }
   pricing?: Record<string, Price>

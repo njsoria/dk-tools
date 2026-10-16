@@ -22,8 +22,9 @@ has, so the IDE extensions should show it too, though that is untested.
 /plugin install kore-model-router@dk-tools
 ```
 
-Then start a new session. The router says it is on with a toast, and
-`router: on` appears under the prompt. Open its pane with `/router pane` or by
+Then start a new session. The router starts off (`"enabled": false` in
+`routes.json`); `/router on` turns it on for that session. When it is on it says
+so with a toast, and `router: on` appears under the prompt. Open its pane with `/router pane` or by
 clicking `router: on` (set `"openPane": true` in `routes.json` to open it with
 every session).
 
@@ -274,6 +275,7 @@ from its own folder (a folder marketplace, `--plugin-dir`) reads the
 | `classifier` | `jev` or `haiku` |
 | `minConfidence` | Below this, take the more capable choice (0 to 1) |
 | `timeoutMs` | How long to wait for the classifier |
+| `enabled` | Whether a session starts with the router on. Shipped as `false`: sessions start with it off, and `/router on` turns it on for that session. Leave it out for on |
 | `openPane` | Open the pane when a session starts (`true`), or leave it to `/router pane` |
 | `baseline` | What `/router savings` compares against by default |
 | `pricing` | Dollars per million tokens, by model id, with an optional `longContext` rate above a token count |
