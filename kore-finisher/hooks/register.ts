@@ -6,8 +6,10 @@
 //   - a pull request the session created or worked on (`prs.json`, one entry
 //     per PR URL).
 // `/outstanding` lists both, split into the desktop app's sessions and the
-// terminal's and editors'. Pull requests are checked with `gh` when listed, so
-// one that has been merged or closed drops off.
+// terminal's and editors'. The pull requests listed are every open one GitHub
+// says you authored (`gh search prs`), so none is missed and a merged or closed
+// one drops off; what a session recorded says which group a PR belongs in, and
+// one no session recorded is listed apart.
 //
 // Later this is where a sanity check on what blocks what, and in what order to
 // finish, will live.
@@ -30,16 +32,16 @@ type Wait = {
 type Pull = { url: string; firstSeen: string; lastSeen: string }
 type Pulls = { sessionId: string; surface: Surface; cwd: string; prs: Record<string, Pull> }
 
-type PrState = { state: 'OPEN' | 'MERGED' | 'CLOSED'; title: string; isDraft: boolean }
+type Open = { repository: { nameWithOwner: string }; number: number; title: string; isDraft: boolean; updatedAt: string; url: string }
 
 const LOGS = 'logs'
 const WAITING = 'waiting.json'
 const PULLS = 'prs.json'
 // A session that was killed never says it ended, so a wait this old is dropped.
-// A pull request isn't dropped by age: `gh` says whether it is still open.
+// A pull request isn't dropped by age: GitHub says whether it is still open.
 const STALE_AFTER = 12 * 3_600_000
-// How many pull requests are checked with `gh` in one listing.
-const MAX_CHECKED = 20
+// How many of your open pull requests one listing asks GitHub for.
+const MAX_OPEN = 50
 const NEEDS = { permission: 'needs permission', question: 'asked a question', input: 'needs input' }
 // A prompt answers a session when a person sent it, not when a notification did.
 const FROM_A_PERSON = new Set(['composer', 'bridge', 'sdk'])
@@ -124,17 +126,22 @@ const ago = (ms: number) => (ms < 60_000 ? 'now' : ms < 3_600_000 ? `${Math.floo
 
 const project = (cwd: string) => cwd.split('/').filter(Boolean).pop() ?? cwd
 
-// `gh` reads the PR; `undefined` when it can't (not installed, not signed in, offline).
-async function prState($: EngineInterface, url: string) {
+// Every open PR you authored, from GitHub; `undefined` when `gh` can't say (not
+// installed, not signed in, offline).
+async function openPulls($: EngineInterface) {
   try {
-    const ran = await $.process.run(['gh', 'pr', 'view', url, '--json', 'state,title,isDraft'], { timeoutMs: 15_000 })
-    return ran.exitCode === 0 ? (JSON.parse(ran.stdout) as PrState) : undefined
+    const ran = await $.process.run(
+      ['gh', 'search', 'prs', '--author', '@me', '--state', 'open', '--limit', String(MAX_OPEN), '--json', 'repository,number,title,isDraft,updatedAt,url'],
+      { timeoutMs: 20_000 },
+    )
+    return ran.exitCode === 0 ? (JSON.parse(ran.stdout) as Open[]) : undefined
   } catch {
     return undefined
   }
 }
 
-type Row = { surface: Surface; sessionId: string; cwd: string; at: string; lines: string[] }
+// `surface` is undefined for a PR no session recorded.
+type Row = { surface: Surface | undefined; at: string; lines: string[] }
 
 async function outstanding($: EngineInterface) {
   const dir = `${$.plugin.root}/${LOGS}`
@@ -146,57 +153,52 @@ async function outstanding($: EngineInterface) {
 
   const waits = parseEach<Wait>(await read(WAITING)).filter(wait => wait.state === 'waiting' && now - Date.parse(wait.updated) < STALE_AFTER)
 
-  // A PR several sessions touched is listed once, from the session that last touched it.
-  const latest = new Map<string, Pull & { sessionId: string; surface: Surface; cwd: string }>()
+  // The session that last touched each PR, from what the sessions recorded.
+  const touched = new Map<string, Pull & { sessionId: string; surface: Surface }>()
   for (const pulls of parseEach<Pulls>(await read(PULLS))) {
     for (const pr of Object.values(pulls.prs)) {
-      const seen = latest.get(pr.url)
-      if (seen === undefined || pr.lastSeen > seen.lastSeen) {
-        latest.set(pr.url, { ...pr, sessionId: pulls.sessionId, surface: pulls.surface, cwd: pulls.cwd })
-      }
+      const seen = touched.get(pr.url)
+      if (seen === undefined || pr.lastSeen > seen.lastSeen) touched.set(pr.url, { ...pr, sessionId: pulls.sessionId, surface: pulls.surface })
     }
   }
-  const pulls = [...latest.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))
-  const checked = await Promise.all(pulls.slice(0, MAX_CHECKED).map(async pr => ({ pr, state: await prState($, pr.url) })))
-  const open = checked.filter(({ state }) => state === undefined || state.state === 'OPEN')
+  const open = await openPulls($)
 
   const rows: Row[] = [
     ...waits.map(wait => {
       const head = [project(wait.cwd), ago(now - Date.parse(wait.since ?? wait.updated)), NEEDS[wait.kind ?? 'input'], ...(wait.sessionId === mine ? ['this session'] : [])]
       return {
         surface: wait.surface,
-        sessionId: wait.sessionId,
-        cwd: wait.cwd,
         at: wait.since ?? wait.updated,
-        lines: [`  ● ${head.join(' · ')}`, ...(wait.text ? [`      ${wait.text}`] : [])],
+        lines: [`  \u25cf ${head.join(' \u00b7 ')}`, ...(wait.text ? [`      ${wait.text}`] : [])],
       }
     }),
-    ...open.map(({ pr, state }) => {
-      const number = pr.url.match(/\/pull\/(\d+)$/)?.[1] ?? ''
-      const repo = pr.url.match(/github\.com\/([^/]+\/[^/]+)\//)?.[1] ?? ''
-      const status = state === undefined ? 'state unknown' : state.isDraft ? 'draft' : 'open'
-      const head = [`${repo} #${number}`, status, `touched ${ago(now - Date.parse(pr.lastSeen))} ago`, ...(pr.sessionId === mine ? ['this session'] : [])]
+    ...(open ?? []).map(pr => {
+      const from = touched.get(pr.url)
+      const head = [`${pr.repository.nameWithOwner} #${pr.number}`, pr.isDraft ? 'draft' : 'ready for review', `updated ${ago(now - Date.parse(pr.updatedAt))} ago`, ...(from?.sessionId === mine ? ['this session'] : [])]
       return {
-        surface: pr.surface,
-        sessionId: pr.sessionId,
-        cwd: pr.cwd,
-        at: pr.firstSeen,
-        lines: [`  ○ ${head.join(' · ')}`, ...(state === undefined ? [] : [`      ${clip(state.title, 120)}`]), `      ${pr.url}`],
+        surface: from === undefined ? undefined : from.surface,
+        at: pr.updatedAt,
+        lines: [`  \u25cb ${head.join(' \u00b7 ')}`, `      ${clip(pr.title, 120)}`, `      ${pr.url}`],
       }
     }),
   ]
 
-  if (rows.length === 0) return 'Nothing outstanding.'
+  const note = open === undefined ? ['', 'GitHub could not be reached, so pull requests are not listed.'] : []
+  if (rows.length === 0) return ['Nothing outstanding.', ...note].join('\n')
   const group = (title: string, of: Row[]) => {
     const sorted = [...of].sort((a, b) => a.at.localeCompare(b.at))
     return sorted.length === 0 ? [`${title}: nothing outstanding`] : [`${title} (${sorted.length})`, ...sorted.flatMap(row => row.lines)]
   }
+  const apart = rows.filter(row => row.surface === undefined)
   return [
     `Outstanding: ${rows.length}`,
     '',
-    ...group('Desktop app', rows.filter(row => isApp(row.surface))),
+    ...group('Desktop app', rows.filter(row => row.surface !== undefined && isApp(row.surface))),
     '',
-    ...group('Terminal and editors', rows.filter(row => !isApp(row.surface))),
+    ...group('Terminal and editors', rows.filter(row => row.surface !== undefined && !isApp(row.surface))),
+    // Pull requests no session recorded: made before the plugin ran, or from a repo it never saw.
+    ...(apart.length === 0 ? [] : ['', ...group('Not from a recorded session', apart)]),
+    ...note,
   ].join('\n')
 }
 

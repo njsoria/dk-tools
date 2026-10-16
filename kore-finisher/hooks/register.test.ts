@@ -6,12 +6,21 @@ import type { Engine } from 'claude-code/testing'
 const NOW = Date.parse('2026-10-11T12:00:00.000Z')
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
 
-// The PR states `gh` reports, by URL. A URL missing here makes `gh` fail.
-type Prs = Record<string, { state: string; title: string; isDraft: boolean }>
+// What `gh search prs` reports: your open PRs. `null` makes `gh` fail.
+type Open = { repository: { nameWithOwner: string }; number: number; title: string; isDraft: boolean; updatedAt: string; url: string }[] | null
+
+const open = (repo: string, number: number, title: string, minutes: number, isDraft = false) => ({
+  repository: { nameWithOwner: repo },
+  number,
+  title,
+  isDraft,
+  updatedAt: minutesAgo(minutes),
+  url: `https://github.com/${repo}/pull/${number}`,
+})
 
 // The world beneath the plugin: its files, a quiet desktop session, the PRs `gh`
 // knows about, and what each tool call prints.
-function world(on: On, files: Record<string, string> = {}, prs: Prs = {}, session = { id: 'this-session', surface: 'desktop' as const, cwd: '/dev/DK.Tools' }) {
+function world(on: On, files: Record<string, string> = {}, pulls: Open = [], session = { id: 'this-session', surface: 'desktop' as const, cwd: '/dev/DK.Tools' }) {
   const find = (path: string) => Object.keys(files).find(name => path.endsWith(name))
   mock.clock(on, { now: NOW })
   on('fs.read', ($, e) => {
@@ -30,12 +39,11 @@ function world(on: On, files: Record<string, string> = {}, prs: Prs = {}, sessio
   on('session.id', () => ({ value: session.id }))
   on('session.surface', () => ({ value: session.surface }))
   on('session.cwd', () => ({ value: session.cwd }))
-  on('process.run', ($, e) => {
-    const url = e.argv[3]!
-    const pr = prs[url]
-    if (pr === undefined) return { value: { exitCode: 1, stdout: '', stderr: 'no such pull request' } }
-    return { value: { exitCode: 0, stdout: JSON.stringify(pr), stderr: '' } }
-  })
+  on('process.run', () =>
+    pulls === null
+      ? { value: { exitCode: 1, stdout: '', stderr: 'gh: not signed in' } }
+      : { value: { exitCode: 0, stdout: JSON.stringify(pulls), stderr: '' } },
+  )
   // What the tool prints: a `gh pr create` names the new PR; anything else prints nothing.
   on('tool.call', ($, e) => ({
     result: { stdout: String((e as { command?: string }).command ?? '').includes('pr create') ? 'https://github.com/acme/web/pull/42\n' : '', stderr: '' },
@@ -120,11 +128,6 @@ test('a desktop PR binding records the PR the call named', async ($, on) => {
 })
 
 test('the list keeps the desktop app and the terminal apart, with waits and PRs in each', async ($, on) => {
-  const prs: Prs = {
-    'https://github.com/acme/web/pull/3': { state: 'OPEN', title: 'Add login', isDraft: false },
-    'https://github.com/acme/api/pull/9': { state: 'OPEN', title: 'Rate limits', isDraft: true },
-    'https://github.com/acme/api/pull/4': { state: 'MERGED', title: 'Old change', isDraft: false },
-  }
   world(
     on,
     {
@@ -132,15 +135,10 @@ test('the list keeps the desktop app and the terminal apart, with waits and PRs 
       'logs/cli.waiting.json': wait('waiting', { sessionId: 'cli', cwd: '/dev/api', since: minutesAgo(90), updated: minutesAgo(90) }),
       'logs/gone.waiting.json': wait('waiting', { sessionId: 'gone', cwd: '/dev/old', since: minutesAgo(60 * 20), updated: minutesAgo(60 * 20) }),
       'logs/done.waiting.json': wait('ended', { sessionId: 'done', cwd: '/dev/done', updated: minutesAgo(1) }),
-      'logs/app.prs.json': pulls('app', 'desktop', '/dev/web', {
-        'https://github.com/acme/web/pull/3': { firstSeen: minutesAgo(200), lastSeen: minutesAgo(10) },
-      }),
-      'logs/cli.prs.json': pulls('cli', 'terminal', '/dev/api', {
-        'https://github.com/acme/api/pull/9': { firstSeen: minutesAgo(30), lastSeen: minutesAgo(30) },
-        'https://github.com/acme/api/pull/4': { firstSeen: minutesAgo(300), lastSeen: minutesAgo(300) },
-      }),
+      'logs/app.prs.json': pulls('app', 'desktop', '/dev/web', { 'https://github.com/acme/web/pull/3': { firstSeen: minutesAgo(200), lastSeen: minutesAgo(10) } }),
+      'logs/cli.prs.json': pulls('cli', 'terminal', '/dev/api', { 'https://github.com/acme/api/pull/9': { firstSeen: minutesAgo(30), lastSeen: minutesAgo(30) } }),
     },
-    prs,
+    [open('acme/web', 3, 'Add login', 200), open('acme/api', 9, 'Rate limits', 30, true)],
   )
   const { text } = await run($)
   expect(text).toContain('Outstanding: 4')
@@ -151,17 +149,37 @@ test('the list keeps the desktop app and the terminal apart, with waits and PRs 
   expect(text.indexOf('Terminal and editors (2)')).toBeLessThan(text.indexOf('May I run it?'))
   expect(text.indexOf('May I run it?')).toBeLessThan(text.indexOf('acme/api #9'))
   expect(text).toContain('draft')
+  expect(text).toContain('ready for review')
   expect(text).toContain('Rate limits')
-  expect(text).toContain('Add login')
   expect(text).toContain('1h')
-  expect(text).not.toMatch(/old|done|#4/)
+  expect(text).not.toMatch(/old|done|Not from a recorded session/)
 })
 
-test('a PR gh cannot check is still listed, marked unknown', async ($, on) => {
-  world(on, { 'logs/this-session.prs.json': pulls('this-session', 'desktop', '/dev/DK.Tools', { 'https://github.com/acme/web/pull/5': { firstSeen: minutesAgo(1), lastSeen: minutesAgo(1) } }) }, {})
+test('an open PR no session recorded is listed apart, never dropped', async ($, on) => {
+  world(on, {}, [open('acme/tools', 12, 'Clean up logs', 45)])
   const { text } = await run($)
-  expect(text).toContain('acme/web #5 · state unknown')
+  expect(text).toContain('Not from a recorded session (1)')
+  expect(text).toContain('acme/tools #12')
+  expect(text).toContain('Desktop app: nothing outstanding')
+})
+
+test('this session marks the PR it recorded', async ($, on) => {
+  world(on, { 'logs/this-session.prs.json': pulls('this-session', 'desktop', '/dev/DK.Tools', { 'https://github.com/acme/web/pull/5': { firstSeen: minutesAgo(1), lastSeen: minutesAgo(1) } }) }, [open('acme/web', 5, 'Fix it', 1)])
+  const { text } = await run($)
+  expect(text).toContain('acme/web #5 · ready for review')
   expect(text).toContain('this session')
+})
+
+test('with no open PR and nothing waiting, nothing is outstanding', async ($, on) => {
+  world(on, {}, [])
+  expect((await run($)).text).toBe('Nothing outstanding.')
+})
+
+test('a failed gh says so and still lists what is waiting', async ($, on) => {
+  world(on, { 'logs/cli.waiting.json': wait('waiting', { since: minutesAgo(0), updated: minutesAgo(0) }) }, null)
+  const { text } = await run($)
+  expect(text).toContain('Terminal and editors (1)')
+  expect(text).toContain('GitHub could not be reached, so pull requests are not listed.')
 })
 
 test('a list with nothing in one group still shows both', async ($, on) => {
