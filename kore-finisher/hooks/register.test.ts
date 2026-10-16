@@ -20,7 +20,7 @@ const open = (repo: string, number: number, title: string, minutes: number, isDr
 
 // The world beneath the plugin: its files, a quiet desktop session, the PRs `gh`
 // knows about, and what each tool call prints.
-function world(on: On, files: Record<string, string> = {}, pulls: Open = [], session = { id: 'this-session', surface: 'desktop' as const, cwd: '/dev/DK.Tools' }) {
+function world(on: On, files: Record<string, string> = {}, pulls: Open = [], session: { id: string; surface: 'desktop' | 'terminal'; cwd: string } = { id: 'this-session', surface: 'desktop', cwd: '/dev/DK.Tools' }) {
   const find = (path: string) => Object.keys(files).find(name => path.endsWith(name))
   mock.clock(on, { now: NOW })
   on('fs.read', ($, e) => {
@@ -38,6 +38,7 @@ function world(on: On, files: Record<string, string> = {}, pulls: Open = [], ses
   })
   on('session.id', () => ({ value: session.id }))
   on('session.surface', () => ({ value: session.surface }))
+  on('session.surfaces', () => ({ value: [session.surface] }))
   on('session.cwd', () => ({ value: session.cwd }))
   on('process.run', () =>
     pulls === null
@@ -187,4 +188,17 @@ test('a list with nothing in one group still shows both', async ($, on) => {
   const { text } = await run($)
   expect(text).toContain('Desktop app: nothing outstanding')
   expect(text).toContain('Terminal and editors (1)')
+})
+
+test('the desktop app gets one link per PR; a terminal gets the URL', async ($, on) => {
+  world(on, {}, [open('acme/tools', 12, 'Clean up logs', 45)])
+  const { text } = await run($)
+  expect(text).toContain('acme/tools #12')
+  expect(text).not.toContain('https://github.com/acme/tools/pull/12')
+})
+
+test('a terminal session prints the PR URL', async ($, on) => {
+  world(on, {}, [open('acme/tools', 12, 'Clean up logs', 45)], { id: 'this-session', surface: 'terminal', cwd: '/dev/DK.Tools' })
+  const { text } = await run($)
+  expect(text).toContain('https://github.com/acme/tools/pull/12')
 })

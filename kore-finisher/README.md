@@ -35,7 +35,8 @@ Terminal and editors (1)
       https://github.com/acme/api/pull/9
 ```
 
-`●` is a session waiting on you; `○` is a pull request. A group with nothing
+`●` is a session waiting on you; `○` is a pull request. In the desktop app the
+URL line is left out, since the app already links `owner/repo #N`. A group with nothing
 outstanding still shows, as "nothing outstanding".
 
 ## What counts
