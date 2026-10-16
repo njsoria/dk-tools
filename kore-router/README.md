@@ -23,7 +23,9 @@ has, so the IDE extensions should show it too, though that is untested.
 ```
 
 Then start a new session. The router starts off (`"enabled": false` in
-`routes.json`); `/router on` turns it on for that session. When it is on it says
+`routes.json`); `/router on` turns it on for that session, and
+`{ "enabled": true }` in your own `routes.json` (see
+[Configuration](#configuration)) starts every session with it on. When it is on it says
 so with a toast, and `router: on` appears under the prompt. Open its pane with `/router pane` or by
 clicking `router: on` (set `"openPane": true` in `routes.json` to open it with
 every session).
@@ -262,13 +264,22 @@ npx -y tsx@4.19.2 eval/pushback.ts
 
 All of it is in [`routes.json`](routes.json).
 
-An installed plugin runs a copy that each update replaces, so don't edit the
-`routes.json` inside it. Copy it into Claude Code's data folder for the
-plugin, `~/.claude/plugins/data/kore-model-router-<marketplace>/routes.json`
-(for an install from this repository, `kore-model-router-dk-tools`), and edit
-that one: when it is there, the router reads it instead of its own. A copy run
-from its own folder (a folder marketplace, `--plugin-dir`) reads the
-`routes.json` beside it, as before.
+Don't edit that file for your own settings: an installed plugin runs a copy
+that each update replaces, and a plugin run from its folder would put them in
+git. Put them in Claude Code's data folder for the plugin,
+`~/.claude/plugins/data/kore-model-router-<marketplace>/routes.json` (for this
+repository, `kore-model-router-dk-tools`; for `--plugin-dir`, `-inline`). The
+router reads it there whether it runs from an installed copy or from its own
+folder, and lays it over the shipped `routes.json`: each top-level key in your
+file replaces the shipped one, and the keys you leave out stay as shipped. So
+
+```json
+{ "enabled": true }
+```
+
+on its own starts every session with the router on. A key you do set replaces
+the whole of it (your `tasks` is every task), and the two files are checked
+together when they are read.
 
 | Key | Meaning |
 | --- | --- |
@@ -298,11 +309,11 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 41 tests that read as the router's
+runs `hooks/register.test.ts`, 47 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
-no model calls. `hooks/config.test.ts` adds 4 for where the router keeps its
+no model calls. `hooks/config.test.ts` adds 6 for where the router keeps its
 logs and your `routes.json`.
 
 The CLI and the desktop app each carry their own copy of the engine, and the

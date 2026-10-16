@@ -47,13 +47,16 @@ const ROUTES = {
   ],
 }
 
-type Classifier = { status?: number; answers?: unknown; haiku?: string; routes?: object; files?: Record<string, string> }
+// `own` is a person's own routes.json in Claude Code's data folder; without
+// one there is none.
+type Classifier = { status?: number; answers?: unknown; haiku?: string; routes?: object; own?: object; files?: Record<string, string> }
 
 // The world beneath the router: its files, a quiet session, the classifier's
 // answer, and a model that records what each request asked for and reports
 // `usage.context` tokens read from its cache.
-function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES, files = {} }: Classifier = {}) {
+function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES, own, files = {} }: Classifier = {}) {
   const sent: TurnStepInput[] = []
+  const read: string[] = []
   const spawned: { subagentType: string; model?: string }[] = []
   const usage = { context: 0 }
   // Files by the end of their path, as the router left or will find them.
@@ -61,7 +64,10 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
   const asked = { jev: 0, haiku: 0 }
   let answer = answers
   mock.clock(on)
+  mock.env(on, { HOME: '/Users/sam' })
   on('fs.read', ($, e) => {
+    read.push(e.path)
+    if (e.path.includes('/plugins/data/')) return own === undefined ? { deny: 'no such file' } : { value: JSON.stringify(own) }
     if (e.path.endsWith('routes.json')) return { value: JSON.stringify(routes) }
     const name = find(e.path)
     return name === undefined ? { deny: 'no such file' } : { value: files[name]! }
@@ -102,7 +108,7 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
   const answering = (next: unknown) => {
     answer = next
   }
-  return { sent, asked, files, spawned, usage, answering }
+  return { sent, asked, files, spawned, usage, answering, read }
 }
 
 const jev = (choice: string, confidence: number, score: number, probabilities: Record<string, number> = { [choice]: 1 }) => ({
@@ -348,8 +354,8 @@ test('/router off hands the session back', async ($, on) => {
   expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
 })
 
-test('"enabled": false starts the session with the router off', async ($, on) => {
-  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, enabled: false } })
+// Starts a session, and keeps the toasts it shows.
+async function start($: Engine, on: On) {
   const toasts: string[] = []
   on('ui.toast', ($, e) => {
     toasts.push(e.text)
@@ -359,6 +365,12 @@ test('"enabled": false starts the session with the router off', async ($, on) =>
   on('session.start', () => ({ cwd: '/tmp' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   await $.session.start({ cwd: '/tmp' })
+  return toasts
+}
+
+test('"enabled": false starts the session with the router off', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, enabled: false } })
+  const toasts = await start($, on)
   await ask($, 'what does git stash pop do?')
   expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
   expect((await run($, '')).text).toContain('Router is off.')
@@ -370,6 +382,33 @@ test('/router on turns on a router that started off', async ($, on) => {
   await run($, 'on')
   await ask($, 'what does git stash pop do?')
   expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
+})
+
+test('an own routes.json of one key turns the router on over a shipped "enabled": false', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, enabled: false }, own: { enabled: true } })
+  const toasts = await start($, on)
+  await ask($, 'what does git stash pop do?')
+  expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
+  expect(toasts).toEqual(['Kore Model Router is on. /router off to turn it off.'])
+})
+
+test('each key of an own routes.json replaces the shipped one, and the rest stay', async ($, on) => {
+  const { sent, asked } = world(on, { own: { classifier: 'haiku' }, haiku: 'build xhigh' })
+  await ask($, 'add a --json flag')
+  expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'xhigh' })
+  expect(asked).toEqual({ jev: 0, haiku: 1 })
+})
+
+test('an own routes.json is checked together with the shipped one', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), own: { models: [{ name: 'opus', id: 'claude-opus-5-5' }] } })
+  await ask($, 'what does git stash pop do?')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test("run from its own folder, the router reads an own routes.json from Claude Code's data folder", async ($, on) => {
+  const { read } = world(on, { files: { '.claude-plugin/marketplace.json': '{"name":"dk-tools"}' } })
+  await ask($, 'add a --json flag')
+  expect(read).toContain('/Users/sam/.claude/plugins/data/kore-model-router-dk-tools/routes.json')
 })
 
 test('a mistake in routes.json is reported, not run', async ($, on) => {
