@@ -19,7 +19,32 @@
       "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-router",
       "repository": "https://github.com/njsoria/dk-tools",
       "license": "MIT",
-      "keywords": ["routing", "model-selection", "effort", "subagents", "hooks"]
+      "keywords": [
+        "routing",
+        "model-selection",
+        "effort",
+        "subagents",
+        "hooks"
+      ]
+    },
+    {
+      "name": "kore-finisher",
+      "source": "./kore-finisher",
+      "description": "Lists what is outstanding across your Claude sessions: sessions waiting on you, and your open pull requests.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Nate Soria",
+        "url": "https://github.com/njsoria"
+      },
+      "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-finisher",
+      "repository": "https://github.com/njsoria/dk-tools",
+      "license": "MIT",
+      "keywords": [
+        "sessions",
+        "pull-requests",
+        "waiting",
+        "inbox"
+      ]
     }
   ]
 }

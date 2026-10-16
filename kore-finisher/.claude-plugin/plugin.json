@@ -1,0 +1,10 @@
+{
+  "name": "kore-finisher",
+  "version": "0.1.0",
+  "description": "Lists what is outstanding across your Claude sessions: sessions waiting on you, and your open pull requests.",
+  "license": "MIT",
+  "author": {
+    "name": "Nate Soria",
+    "url": "https://github.com/njsoria"
+  }
+}
