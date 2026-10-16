@@ -1,7 +1,7 @@
 {
   "name": "kore-model-router",
   "displayName": "Kore Model Router",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
   "license": "MIT",
   "types": "./types/index.d.ts",

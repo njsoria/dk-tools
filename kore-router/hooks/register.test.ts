@@ -348,6 +348,30 @@ test('/router off hands the session back', async ($, on) => {
   expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
 })
 
+test('"enabled": false starts the session with the router off', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, enabled: false } })
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('command.register', () => ({ value: undefined }))
+  on('session.start', () => ({ cwd: '/tmp' }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.session.start({ cwd: '/tmp' })
+  await ask($, 'what does git stash pop do?')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+  expect((await run($, '')).text).toContain('Router is off.')
+  expect(toasts).toEqual(['Kore Model Router is off. /router on to turn it on.'])
+})
+
+test('/router on turns on a router that started off', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, enabled: false } })
+  await run($, 'on')
+  await ask($, 'what does git stash pop do?')
+  expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
+})
+
 test('a mistake in routes.json is reported, not run', async ($, on) => {
   const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, tasks: [{ name: 'answer', model: 'gpt', effort: 'low', when: 'quick' }] } })
   await ask($, 'what does git stash pop do?')

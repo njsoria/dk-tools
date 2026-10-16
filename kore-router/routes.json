@@ -2,6 +2,7 @@
   "classifier": "jev",
   "minConfidence": 0.5,
   "timeoutMs": 2000,
+  "enabled": false,
   "openPane": false,
 
   "baseline": { "model": "opus", "effort": "xhigh" },
