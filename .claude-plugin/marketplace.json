@@ -11,7 +11,7 @@
       "name": "kore-model-router",
       "source": "./kore-router",
       "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
-      "version": "0.4.0",
+      "version": "0.6.0",
       "author": {
         "name": "Nate Soria",
         "url": "https://github.com/njsoria"
