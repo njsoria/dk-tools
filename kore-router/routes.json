@@ -1,40 +1,121 @@
 {
   "classifier": "jev",
   "minConfidence": 0.5,
-  "timeoutMs": 5000,
-  "stepDownUntilMessages": 30,
-  "openPane": true,
+  "timeoutMs": 2000,
+  "enabled": false,
+  "openPane": false,
 
   "baseline": { "model": "opus", "effort": "xhigh" },
 
-  "_pricing": "USD per million tokens. Haiku's cache prices are assumed at 0.1x / 1.25x input and it ignores Haiku's higher rate above 100K prompt tokens; check the pricing page and edit.",
+  "_pricing": "USD per million tokens. cacheWrite is the 1-hour rate (2x input), which Claude Code sessions use; Haiku's cache prices are assumed at 0.1x / 2x input. Haiku charges its longContext rates once a request carries over 100K tokens. Check the pricing page and edit.",
   "pricing": {
-    "claude-haiku-5-5": { "input": 0.1, "output": 0.5, "cacheRead": 0.01, "cacheWrite": 0.125 },
-    "claude-sonnet-5-5": { "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 2.5 },
-    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 5 }
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "output": 0.5,
+      "cacheRead": 0.01,
+      "cacheWrite": 0.2,
+      "longContext": { "above": 100000, "input": 0.5, "output": 2.5, "cacheRead": 0.05, "cacheWrite": 1 }
+    },
+    "claude-sonnet-5-5": { "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 4 },
+    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 8 }
+  },
+
+  "_switching": "A step down to a cheaper model happens only when it saves `margin` times what the switch costs: the cheaper model writing the whole conversation into its cache, and the stronger one doing it again on the way back if its cache expired. The expected figures stand in until the session has turns of its own.",
+  "switching": {
+    "expectedSteps": 8,
+    "expectedOutput": 5000,
+    "cacheTtlMinutes": 60,
+    "margin": 1.5,
+    "fallbackMessages": 30
+  },
+
+  "_guards": "pushback: a prompt this matches (blunt openers like \"no\" or \"wrong\" at the start of the prompt, softer corrections like \"I'm talking about...\" or \"it still doesn't work\" at the start of any sentence, after at most two interjections like \"ok,\" or \"try again,\"; a few phrases like \"you're confusing me\" anywhere) escalates the next holdTurns prompts a tier above the turn it answers. toolErrors: that many failed tool calls in one turn below the top model move the rest of it up a tier. followUp: a prompt this matches whole keeps the route in force without asking the classifier.",
+  "guards": {
+    "followUp": "^\\W*((yes|yep|yeah|y|ok|okay|sure|please|great|perfect|thanks|thank you|go ahead|go for it|do it|do that|continue|carry on|proceed|sounds good|looks good|lgtm|ship it|keep going|next)[\\s,.!]*)+$",
+    "pushback": "^\\W*(no\\b(?!-| (new|need|worries|problem|rush|more|longer|such|module)\\b)|nope\\b|wrong\\b|that['’]?s (not|wrong|incorrect)|not what i|revert\\b|undo\\b(?!/))|(^|[.!?\\n])\\W{0,10}((ok(ay)?|sorry|oh|hmm+|wait|actually|look|again|ugh|fine|try again)\\b\\W{1,4}){0,2}((it|this|that)( still)? (doesn['’]?t|didn['’]?t|isn['’]?t|won['’]?t|does not|did not|is not) (work|right|correct|fix)|(it|this|that)(['’]?s| is)? (still )?(not working|broken|failing)|(still )?(doesn['’]?t|didn['’]?t) work|still (fails?|failing|broken|wrong|not|doesn['’]?t|didn['’]?t)|that['’]?s (wrong|incorrect|not (right|it|correct|working))|you (broke|missed|forgot)|i(['’]?m| am| was) (talking|asking|referring|speaking) (about|of)|i (already |just )?(said|told you|meant)\\b|i (don['’]?t|do not) need you to|i (didn['’]?t|did not|never) (ask(ed)? (you|for)|say (that|to)|said (that|to)|mean (that|this|it|the)|want (that|this|it|you|the))\\b|you(['’]?re| are) (confusing|misunderstanding|not (listening|understanding|following))|you (misunderstood|misread|didn['’]?t (listen|understand)|don['’]?t (understand|get it)|aren['’]?t listening)|stop (confusing|ignoring) (me|my|what)\\b)|\\b((do|follow|listen to) what i(['’]?m| am)? (say|saying|said|asked|asking)|you(['’]?re| are) (confusing|misunderstanding) me|(it|this|that)(['’]?s| is| was) not what i (meant|said|asked|wanted)|(as|like) i (already )?(said|told you)\\b)",
+    "holdTurns": 3,
+    "toolErrors": 4
+  },
+
+  "subagents": {
+    "classify": true,
+    "types": {
+      "Explore": "lookup",
+      "claude-code-guide": "answer",
+      "statusline-setup": "mechanical",
+      "Plan": "design"
+    }
   },
 
   "rules": [
     { "match": "\\bultrathink\\b", "model": "opus", "effort": "max", "why": "asked for maximum thinking" },
-    { "match": "^\\s*(typo|rename|reformat|format)\\b", "model": "haiku", "effort": "low", "why": "mechanical edit" }
+    { "match": "^\\s*(typo|rename|reformat|format)\\b", "task": "mechanical", "why": "mechanical edit" },
+    {
+      "match": "\\b(security|vulnerab\\w*|secrets?|credentials?|passwords?|api[- ]?keys?|tokens? (leak|rotation)|auth(entication|orization)?|oauth|encrypt\\w*|payments?|billing|charg(e|es|ed|ing)|refunds?|invoices?|migrat(e|ion|ions)|schema change|drop table|truncate|delete (all|every)|rm -rf|force[- ]push|prod(uction)?|deploy\\w*|rollback|concurren\\w*|race condition|deadlock)\\b",
+      "model": "opus",
+      "effort": "high",
+      "atLeast": true,
+      "why": "it touches something risky"
+    }
   ],
 
-  "models": [
+  "_tasks": "The classifier names one of these. Each runs on at least its model and effort; the classifier's effort can raise it, never lower it. Order doesn't matter.",
+  "tasks": [
     {
-      "name": "haiku",
-      "id": "claude-haiku-5-5",
-      "when": "A quick, self-contained job with an obvious answer: a factual or how-do-I question, reading or summarising a file, a rename, formatting, a one-line fix, running a command and reporting what it printed."
+      "name": "answer",
+      "model": "haiku",
+      "effort": "low",
+      "when": "A question with a direct answer and nothing to change: how something works, what a command, flag or error message means, a factual or how-do-I question. Not a question of whether something is safe, correct or could go wrong, which needs checking."
     },
     {
-      "name": "sonnet",
-      "id": "claude-sonnet-5-5",
-      "when": "Ordinary software work with a clear goal: building a well-specified feature or script, fixing a bug whose cause is known or easy to find, writing tests, refactoring within a few files, a routine review."
+      "name": "lookup",
+      "model": "haiku",
+      "effort": "medium",
+      "when": "Finding or reading things with no judgement about what to change: searching the code, reading or summarising a file or doc, running a command and reporting what it printed."
     },
     {
-      "name": "opus",
-      "id": "claude-opus-5-5",
-      "when": "Work where a mistake is costly or the path is unclear: designing an architecture, debugging something whose cause is unknown, a change that spans many files or systems, security-sensitive or data-migration work, subtle concurrency or performance problems, open-ended research or planning."
+      "name": "mechanical",
+      "model": "haiku",
+      "effort": "low",
+      "when": "A small edit whose content the request fully dictates: a rename, a typo, formatting, a version bump, a one-line change spelled out in the request."
+    },
+    {
+      "name": "build",
+      "model": "sonnet",
+      "effort": "medium",
+      "when": "Writing or extending code to a clear goal: a well-specified feature, script or test, fixing a bug whose cause is known or obvious, a refactor within a few files, a commit or PR description."
+    },
+    {
+      "name": "review",
+      "model": "sonnet",
+      "effort": "high",
+      "when": "Checking work rather than doing it: reviewing a diff or file for bugs, verifying a change does what it should, judging whether tests cover enough."
+    },
+    {
+      "name": "debug",
+      "model": "opus",
+      "effort": "high",
+      "when": "Finding the cause of a failure nobody understands yet: a flaky or failing test with no obvious reason, a wrong result, a crash, a slow path, behaviour that differs between environments."
+    },
+    {
+      "name": "design",
+      "model": "opus",
+      "effort": "high",
+      "when": "Deciding how something should be built or changed: architecture, a plan, a refactor across many files or systems, weighing approaches, open-ended research, orchestrating several agents."
+    },
+    {
+      "name": "risky",
+      "model": "opus",
+      "effort": "xhigh",
+      "when": "Work where a mistake is costly or hard to undo: security, auth, secrets, payments, data migrations or deletion, production deploys or infrastructure, concurrency."
     }
+  ],
+
+  "_models": "Weakest first. maxContext is the most context, in tokens, a model is trusted to work in; past it the router keeps a stronger one.",
+  "models": [
+    { "name": "haiku", "id": "claude-haiku-5-5", "maxContext": 100000 },
+    { "name": "sonnet", "id": "claude-sonnet-5-5" },
+    { "name": "opus", "id": "claude-opus-5-5" }
   ],
 
   "efforts": [

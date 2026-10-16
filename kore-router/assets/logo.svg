@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Kore Router: one line in, three routes out, one chosen">
-  <title>Kore Router</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Kore Model Router: one line in, three routes out, one chosen">
+  <title>Kore Model Router</title>
   <rect width="512" height="512" fill="#121217"/>
   <g fill="none" stroke="#f7f7f8" stroke-opacity="0.6" stroke-width="12" stroke-linejoin="miter">
     <path d="M96 256H192"/>

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Webhook monitor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/page.css">
+  <script type="module" src="/page.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1>Webhook monitor</h1>
+    <span class="status" data-status><span class="dot" aria-hidden="true"></span><span data-status-text>Connecting</span></span>
+    <button type="button" class="quiet" data-sign-out hidden>Sign out</button>
+  </header>
+
+  <main>
+    <noscript><p class="notice">This page needs JavaScript.</p></noscript>
+
+    <section class="panel door" data-view="door" hidden>
+      <form data-sign-in>
+        <h2>Sign in</h2>
+        <p class="note">The token the server was given as <code>MONITOR_TOKEN</code>.</p>
+        <label class="field">
+          <span>Monitor token</span>
+          <input type="password" name="token" autocomplete="current-password" required>
+        </label>
+        <p class="error" role="alert" data-sign-in-error hidden></p>
+        <button type="submit" class="button">Sign in</button>
+      </form>
+    </section>
+
+    <div data-view="desk" hidden>
+      <section class="panel" aria-labelledby="address-heading">
+        <h2 id="address-heading">Point the webhook here</h2>
+        <div class="address">
+          <code data-address></code>
+          <button type="button" class="quiet" data-copy>Copy</button>
+          <button type="button" class="quiet" data-test>Send a test</button>
+        </div>
+        <p class="note">Any method, any body, any headers. It answers 200 at once. The sender's key is never shown: an Authorization header appears only as its length.</p>
+      </section>
+
+      <section class="panel timer" data-timer aria-labelledby="timer-heading">
+        <h2 id="timer-heading">Timer</h2>
+        <form class="arm" data-arm>
+          <label class="field">
+            <span>Seconds</span>
+            <input type="number" name="seconds" min="1" max="3600" step="1" value="60" required inputmode="numeric">
+          </label>
+          <label class="field grow">
+            <span>Label (optional)</span>
+            <input type="text" name="label" maxlength="60" placeholder="Interested, rep 2" autocomplete="off">
+          </label>
+          <button type="submit" class="button">Arm <kbd>Space</kbd></button>
+        </form>
+        <p class="note">Press Arm, or the space bar anywhere outside a text field, as you press the button that makes the sender send. The timer counts from your click or key, not from when the page heard about it.</p>
+
+        <div class="clock" aria-live="off">
+          <div class="clock__time" data-clock>—</div>
+          <div class="clock__what" data-clock-what>Not armed</div>
+          <div class="bar-track" aria-hidden="true"><div class="bar-fill" data-fill></div></div>
+        </div>
+        <p class="note" data-sync></p>
+      </section>
+
+      <section class="panel" aria-labelledby="runs-heading">
+        <div class="head">
+          <h2 id="runs-heading">Runs</h2>
+          <button type="button" class="quiet" data-clear>Clear all</button>
+        </div>
+        <p class="note" data-no-runs>None yet. Each Arm is a run; its row says when the first request arrived after the click.</p>
+        <div class="scroll">
+          <table data-runs hidden>
+            <thead><tr><th>Run</th><th>Label</th><th>Armed at</th><th>Timer</th><th>Requests</th><th>First arrived</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="hits-heading">
+        <h2 id="hits-heading" class="plain">Requests <span class="count" data-count></span></h2>
+        <p class="note" data-no-hits>Nothing has arrived yet.</p>
+        <ol class="hits" data-hits></ol>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

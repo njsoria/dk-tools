@@ -4,35 +4,40 @@
   "description": "Small tools for day-to-day work at DevKore.",
   "owner": {
     "name": "DevKore",
-    "email": "nate@devkore.com"
+    "url": "https://github.com/njsoria/dk-tools"
   },
   "plugins": [
     {
-      "name": "kore-router",
+      "name": "kore-model-router",
       "source": "./kore-router",
-      "description": "Sends each prompt to the model and effort it deserves, picked by rules and a cheap classifier (Jev or Haiku).",
-      "version": "0.1.0",
+      "description": "Sends each prompt and each subagent to the model and effort its task deserves, with guards that raise a turn when quality is at risk.",
+      "version": "0.6.0",
       "author": {
         "name": "Nate Soria",
-        "email": "nate@devkore.com"
+        "url": "https://github.com/njsoria"
       },
+      "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-router",
+      "repository": "https://github.com/njsoria/dk-tools",
       "license": "MIT",
       "keywords": [
         "routing",
         "model-selection",
         "effort",
+        "subagents",
         "hooks"
       ]
     },
     {
       "name": "kore-finisher",
       "source": "./kore-finisher",
-      "description": "Lists what is outstanding across your Claude sessions: sessions waiting on you, and the pull requests they touched.",
+      "description": "Lists what is outstanding across your Claude sessions: sessions waiting on you, and your open pull requests.",
       "version": "0.1.0",
       "author": {
         "name": "Nate Soria",
-        "email": "nate@devkore.com"
+        "url": "https://github.com/njsoria"
       },
+      "homepage": "https://github.com/njsoria/dk-tools/tree/main/kore-finisher",
+      "repository": "https://github.com/njsoria/dk-tools",
       "license": "MIT",
       "keywords": [
         "sessions",
