@@ -1,5 +1,9 @@
 # DK.Tools
 
+[![Sync main](https://github.com/njsoria/dk-tools/actions/workflows/sync-main.yml/badge.svg?branch=develop)](https://github.com/njsoria/dk-tools/actions/workflows/sync-main.yml)
+
+Sync main: whether the last merge into `develop` fast-forwarded `main` to match.
+
 Small tools for day-to-day work at DevKore. Each folder stands alone.
 
 ## Tools
