@@ -1,0 +1,16 @@
+{
+  "name": "yt-transcript",
+  "version": "0.1.0",
+  "description": "Get the transcript of a YouTube video as markdown, text, SRT or JSON",
+  "type": "module",
+  "bin": {
+    "yt-transcript": "bin/yt-transcript.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
