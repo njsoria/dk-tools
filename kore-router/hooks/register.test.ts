@@ -170,6 +170,44 @@ test('an unsure answer leans to the task on the more capable model and the highe
   expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high' })
 })
 
+test('the tasks on a stronger model, sharing upwardMass between them, move the route up', async ($, on) => {
+  const answers = jev('build', 0.6, 0, { build: 0.55, design: 0.25, answer: 0.2 })
+  const { sent } = world(on, { routes: { ...ROUTES, upwardMass: 0.25 }, answers })
+  await ask($, 'make it faster')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
+})
+
+test('below upwardMass, the likeliest task stands', async ($, on) => {
+  const answers = jev('build', 0.6, 0, { build: 0.55, design: 0.25, answer: 0.2 })
+  const { sent } = world(on, { routes: { ...ROUTES, upwardMass: 0.4 }, answers })
+  await ask($, 'add a --json flag')
+  expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5' })
+})
+
+// `risky` kept apart: Jev answers it yes or no beside the kind of job.
+const APART = { ...ROUTES, tasks: ROUTES.tasks.map(task => (task.name === 'risky' ? { ...task, raiseAbove: 0.7 } : task)) }
+
+test('a task kept apart is asked yes or no, and a yes raises the kind of job Jev named', async ($, on) => {
+  const { sent } = world(on, { routes: APART, answers: { ...jev('build', 0.9, 0), 'apart:risky': { noul: 0.85 } } })
+  await ask($, 'rotate the signing keys')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh' })
+})
+
+test('a task kept apart below its raiseAbove leaves the kind of job as Jev named it', async ($, on) => {
+  const { sent } = world(on, { routes: APART, answers: { ...jev('build', 0.9, 0), 'apart:risky': { noul: 0.4 } } })
+  await ask($, 'send the summary to the channel')
+  expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low' })
+})
+
+test("a note from the harness keeps the route in force without asking the classifier", async ($, on) => {
+  const events = '^\\s*<(bash-input|side-sessions-event)>'
+  const { sent, asked } = world(on, { routes: { ...ROUTES, guards: { ...ROUTES.guards, events } }, answers: jev('answer', 0.9, 0) })
+  await ask($, 'what does git stash pop do?')
+  await ask($, '<side-sessions-event>None of the sessions you started is working now.</side-sessions-event>')
+  expect(asked.jev).toBe(1)
+  expect(sent[1]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
+})
+
 test('an atLeast rule raises what the classifier answers, after asking it', async ($, on) => {
   const { sent, asked } = world(on, { answers: jev('answer', 0.9, 0) })
   await ask($, 'what does the prod config set?')

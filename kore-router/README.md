@@ -58,21 +58,36 @@ claude --plugin-dir path/to/kore-router
    "continue" and the like carry on the job under way, so no classifier call
    is made. So does a prompt of two words or fewer with no question mark
    (`guards.shortWords`), which is too thin to classify; an `atLeast` rule
-   still raises it.
+   still raises it. A note the harness wrote rather than you (a `!` command's
+   output, a side session's or background task's note: `guards.events`)
+   keeps the route in force the same way.
 3. **Otherwise a classifier names the task.** It reads the prompt and the last
    few lines of the conversation (so "ok, do it" is judged by the job under
-   way) against the `when` of each task: `answer`, `lookup`, `mechanical`,
-   `build`, `review`, `debug`, `design` or `risky`. Each task has the least
-   model and effort it runs on, and the classifier's effort can raise that,
-   never lower it.
-   - **Jev** (the default) is TypeSafe's classifier. It answers in about
-     0.2 seconds (p95 under 0.3s), and at about $0.042 per million input
-     tokens a routed prompt costs a few thousandths of a cent.
+   way) against the `when` (and `not`) of each task: `debug`, `design`,
+   `review`, `build`, `lookup`, `answer` or `mechanical`. Each task has the
+   least model and effort it runs on, and the classifier's effort can raise
+   that, never lower it.
+   - **Jev** (the default) is TypeSafe's classifier. One request asks three
+     things at once: which kind of job it is (a Choice), how much thinking it
+     needs (a Score), and, on its own, whether a mistake in it would be costly
+     or hard to undo (a Noul, yes or no). A yes at or above `raiseAbove` (0.5)
+     raises whatever kind was named to `risky`, Opus at extra-high effort.
+     Stakes cut across the kinds (a `build` can be risky), so they are a
+     separate judgment rather than one more option to pick between. It
+     answers in about 0.1 seconds (p95 under 0.2s), and at $0.042 per million
+     input tokens a routed prompt costs a few thousandths of a cent.
+     `jevModel` pins the release (`jev-1.14.0`), so a new one can't move the
+     routes until the eval has run on it, and each decision logs the release
+     that answered.
    - **Haiku** (`"classifier": "haiku"`) runs on your own Claude login, so it
-     needs no key. It is slower: a full model call per prompt.
+     needs no key. It is slower: a full model call per prompt. It picks `risky`
+     as one more kind of job.
 4. **Unsure means more capable.** Below `minConfidence`, the router takes
    whichever of the two likeliest tasks runs on the stronger model, and rounds
-   the effort up.
+   the effort up. And when the tasks on a stronger model together hold
+   `upwardMass` (0.4) of Jev's probability, the route takes that model even if
+   a cheaper task was the likeliest one: a route too low costs quality, one too
+   high only money, so moving up needs less than winning does.
 
 The harness's own `<system-reminder>` notes are stripped first, so they
 neither trip a rule nor sway the classifier.
@@ -221,36 +236,67 @@ What the figure leaves out:
 
 ## Accuracy
 
-`eval/cases.json` holds 60 labelled prompts. The first 44 are plain, everyday
-asks. The last 16 are deliberately hard: debugging phrased as a question,
-risky work phrased as a quick fix, pasted stack traces, two jobs in one
-prompt, and bare follow-ups like "make it faster". `eval/run.ts` sends each
-through the same code the plugin runs before a turn (rules, classifier, task
-floors) and scores the model it lands on:
+`eval/cases.json` holds 70 labelled prompts. The first 44 are plain, everyday
+asks. The other 26 are deliberately hard: debugging phrased as a question,
+risky work phrased as a quick fix, risky work with none of the risky rule's
+words (so Jev alone has to see the stakes), routine actions that sound
+consequential (merging, archiving, moving files), pasted stack traces, two
+jobs in one prompt, and bare follow-ups like "make it faster". `eval/run.ts`
+sends each through the same code the plugin runs before a turn (rules,
+classifier, task floors) and scores the model it lands on:
 
 ```bash
 npx -y tsx@4.19.2 eval/run.ts --runs 5
+npx -y tsx@4.19.2 eval/run.ts --runs 3 --order reverse
 ```
 
-Latest result with Jev, 60 cases × 5 runs:
+Jev can lean toward the option it is offered first, so `--order reverse`
+offers the tasks the other way round: a route that moves with the order is one
+to tighten in `routes.json`.
 
-| Measure | Result |
-| --- | --- |
-| Right model | 100% (plain 100%, hard 100%) |
-| Under-routed (the quality risk) | 0% |
-| Over-routed (the cost) | 0% |
-| Right task | 98% (92% the exact label) |
-| Same route on every run | 98% |
-| Latency | p50 167 ms, p95 236 ms |
+Latest result, `jev-1.14.0`, 70 cases:
+
+| Measure | 5 runs, listed order | 3 runs, reversed |
+| --- | --- | --- |
+| Right model | 100% (plain 100%, hard 100%) | 100% |
+| Under-routed (the quality risk) | 0% | 0% |
+| Over-routed (the cost) | 0% | 0% |
+| Right task | 98% (91% the exact label) | 99% (94%) |
+| Same route on every run | 91% | 94% |
+| Latency | p50 100 ms, p95 143 ms | p50 117 ms, p95 238 ms |
+
+The routes that vary between runs vary in effort, not model. The same suite
+with the `routes.json` of 0.6.0 (risky as one more kind of job) gets 94% right
+and 6% over-routed: it sends archiving a session, moving a folder and closing
+an issue to Opus at extra-high effort.
 
 Treat these as a floor test, not a promise. The cases were written alongside
-the routing rules, and one round of tuning (adding charges and refunds to the
-risky words) came from a miss this suite found. Real prompts are messier.
-When the pane shows a misroute, add it to `cases.json` with the task it should
-have had, and fix `routes.json` until the suite passes again.
+the routing rules, and several rounds of tuning came from misses this suite
+found. When the pane shows a misroute, add it to `cases.json` with the task it
+should have had, and fix `routes.json` until the suite passes again.
 
 The eval needs `TYPESAFE_API_KEY` and makes one Jev call per case per run. It
 writes every answer to `eval/results/`, which git ignores.
+
+### Your own traffic
+
+The suite says whether routes are right; `eval/replay.ts` says what a change
+does to the prompts you actually send. It takes a sample of the prompts in
+your decision logs, routes each through `routes.json` and, with `--against`,
+through another routes file, and counts where they land and what moved:
+
+```bash
+git show HEAD:kore-router/routes.json > /tmp/before.json
+npx -y tsx@4.19.2 eval/replay.ts --sample 400 --against /tmp/before.json
+```
+
+The logs keep each prompt but not the conversation before it, so each is
+classified on its own. It makes one Jev call per prompt per routes file, and
+writes every prompt and route to `eval/results/`, which git ignores: it holds
+your prompts. On 400 of the author's prompts, splitting out the stakes and
+keeping harness notes on the route in force took Opus from 47% of them to 33%,
+mostly merges, archiving, PR chores and `!` command output moving to Haiku or
+Sonnet.
 
 The pushback guard has its own offline check, with no key or API call. It tests
 `guards.pushback` against the corrections and near-misses under `pushback` in
@@ -284,17 +330,19 @@ together when they are read.
 | Key | Meaning |
 | --- | --- |
 | `classifier` | `jev` or `haiku` |
+| `jevModel` | The Jev release to ask (`jev-1.14.0`). Bump it, run the eval, then ship |
 | `minConfidence` | Below this, take the more capable choice (0 to 1) |
+| `upwardMass` | When the tasks on a stronger model share this much of the probability, take that model (0 to 1) |
 | `timeoutMs` | How long to wait for the classifier |
 | `enabled` | Whether a session starts with the router on. Shipped as `false`: sessions start with it off, and `/router on` turns it on for that session. Leave it out for on |
 | `openPane` | Open the pane when a session starts (`true`), or leave it to `/router pane` |
 | `baseline` | What `/router savings` compares against by default |
 | `pricing` | Dollars per million tokens, by model id, with an optional `longContext` rate above a token count |
 | `switching` | `expectedSteps`, `expectedOutput`, `cacheTtlMinutes`, `margin`, `fallbackMessages`: when a step down pays |
-| `guards` | `pushback` and `followUp` (regexes), `shortWords`, `holdTurns`, `toolErrors` |
+| `guards` | `pushback`, `followUp` and `events` (regexes), `shortWords`, `holdTurns`, `toolErrors` |
 | `subagents` | `classify` (other types), and `types`: agent type to task |
 | `rules` | `match` (regex), then a `task` or a `model` and `effort`, a `why`, and `atLeast` to raise rather than decide |
-| `tasks` | `name`, the least `model` and `effort` it runs on, and a `when` the classifier reads |
+| `tasks` | `name`, the least `model` and `effort` it runs on, a `when` the classifier reads, an optional `not` that marks where the task ends, and an optional `raiseAbove` that asks about it on its own, yes or no. Jev leans slightly toward the option listed first, so list the costly tasks first |
 | `models` | `name`, `id`, optional `maxContext`. Order them weakest to strongest |
 | `efforts` | Levels, weakest to strongest, each with a `when` |
 
@@ -309,7 +357,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 47 tests that read as the router's
+runs `hooks/register.test.ts`, 52 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
@@ -339,7 +387,8 @@ beside it.
 - `hooks/ledger.ts`: the log lines, and `/router savings`.
 - `hooks/pane.ts`: what the pane says about each decision.
 - `hooks/register.test.ts`, `hooks/config.test.ts`: the tests.
-- `eval/`: the labelled prompts and the accuracy runner.
+- `eval/`: the labelled prompts, the accuracy runner, the pushback check, and
+  the replay of your own logged prompts.
 - `routes.json`: all configuration.
 - `logs/<session id>.routes.jsonl`: every decision of one session, which its
   pane reads.

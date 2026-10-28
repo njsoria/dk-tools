@@ -393,6 +393,72 @@
       "prompt": "look at the failing CI run and fix whatever broke",
       "task": "debug",
       "hard": true
+    },
+    {
+      "prompt": "change who can open the admin dashboard so only owners get in",
+      "task": "risky",
+      "hard": true
+    },
+    {
+      "prompt": "rotate the signing keys the webhook handler checks",
+      "task": "risky",
+      "hard": true
+    },
+    {
+      "prompt": "wipe the customer uploads bucket and re-seed it from last night's backup",
+      "task": "risky",
+      "hard": true
+    },
+    {
+      "prompt": "turn the new pricing flag on for every customer",
+      "task": "risky",
+      "also": [
+        "mechanical",
+        "build"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "go ahead and copy Sam on that email and bcc Jordan",
+      "task": "mechanical",
+      "also": [
+        "build"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "archive this session and flag its worktree for cleanup",
+      "task": "mechanical",
+      "also": [
+        "lookup"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "rebase the feature branch onto develop and renumber its rule to G13",
+      "task": "mechanical",
+      "also": [
+        "build"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "move the sample library folder to my external drive",
+      "task": "mechanical",
+      "hard": true
+    },
+    {
+      "prompt": "put this into the design doc so the team can share it, bump its version, and update it from what we discussed",
+      "task": "build",
+      "hard": true
+    },
+    {
+      "prompt": "merged. close out the issue and delete the branch",
+      "task": "mechanical",
+      "also": [
+        "build"
+      ],
+      "hard": true
     }
   ],
   "pushback": {

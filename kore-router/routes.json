@@ -1,6 +1,10 @@
 {
   "classifier": "jev",
+  "_jevModel": "Pinned so a new Jev release can't move routes before eval/run.ts has run on it. Bump it, run the eval, then ship.",
+  "jevModel": "jev-1.14.0",
   "minConfidence": 0.5,
+  "_upwardMass": "When the tasks on a stronger model together hold at least this much of Jev's probability, the route takes that model even if a cheaper task was likelier. A route too low costs quality and one too high only money, so moving up needs less than winning does.",
+  "upwardMass": 0.4,
   "timeoutMs": 2000,
   "enabled": false,
   "openPane": false,
@@ -29,10 +33,11 @@
     "fallbackMessages": 30
   },
 
-  "_guards": "pushback: a prompt this matches (blunt openers like \"no\" or \"wrong\" at the start of the prompt, softer corrections like \"I'm talking about...\" or \"it still doesn't work\" at the start of any sentence, after at most two interjections like \"ok,\" or \"try again,\"; a few phrases like \"you're confusing me\" anywhere) escalates the next holdTurns prompts a tier above the turn it answers. toolErrors: that many failed tool calls in one turn below the top model move the rest of it up a tier. followUp: a prompt this matches whole keeps the route in force without asking the classifier.",
+  "_guards": "pushback: a prompt this matches (blunt openers like \"no\" or \"wrong\" at the start of the prompt, softer corrections like \"I'm talking about...\" or \"it still doesn't work\" at the start of any sentence, after at most two interjections like \"ok,\" or \"try again,\"; a few phrases like \"you're confusing me\" anywhere) escalates the next holdTurns prompts a tier above the turn it answers. toolErrors: that many failed tool calls in one turn below the top model move the rest of it up a tier. followUp: a prompt this matches whole keeps the route in force without asking the classifier. events: a prompt the harness wrote rather than the person (a `!` command's output, a side session's or a background task's note) keeps the route in force too; a CI event or another session's message asks for a job, so it is classified.",
   "guards": {
     "followUp": "^\\W*((yes|yep|yeah|y|ok|okay|sure|please|great|perfect|thanks|thank you|go ahead|go for it|do it|do that|continue|carry on|proceed|sounds good|looks good|lgtm|ship it|keep going|next)[\\s,.!]*)+$",
     "pushback": "^\\W*(no\\b(?!-| (new|need|worries|problem|rush|more|longer|such|module)\\b)|nope\\b|wrong\\b|that['’]?s (not|wrong|incorrect)|not what i|revert\\b|undo\\b(?!/))|(^|[.!?\\n])\\W{0,10}((ok(ay)?|sorry|oh|hmm+|wait|actually|look|again|ugh|fine|try again)\\b\\W{1,4}){0,2}((it|this|that)( still)? (doesn['’]?t|didn['’]?t|isn['’]?t|won['’]?t|does not|did not|is not) (work|right|correct|fix)|(it|this|that)(['’]?s| is)? (still )?(not working|broken|failing)|(still )?(doesn['’]?t|didn['’]?t) work|still (fails?|failing|broken|wrong|not|doesn['’]?t|didn['’]?t)|that['’]?s (wrong|incorrect|not (right|it|correct|working))|you (broke|missed|forgot)|i(['’]?m| am| was) (talking|asking|referring|speaking) (about|of)|i (already |just )?(said|told you|meant)\\b|i (don['’]?t|do not) need you to|i (didn['’]?t|did not|never) (ask(ed)? (you|for)|say (that|to)|said (that|to)|mean (that|this|it|the)|want (that|this|it|you|the))\\b|you(['’]?re| are) (confusing|misunderstanding|not (listening|understanding|following))|you (misunderstood|misread|didn['’]?t (listen|understand)|don['’]?t (understand|get it)|aren['’]?t listening)|stop (confusing|ignoring) (me|my|what)\\b)|\\b((do|follow|listen to) what i(['’]?m| am)? (say|saying|said|asked|asking)|you(['’]?re| are) (confusing|misunderstanding) me|(it|this|that)(['’]?s| is| was) not what i (meant|said|asked|wanted)|(as|like) i (already )?(said|told you)\\b)",
+    "events": "^\\s*<(bash-(input|stdout|stderr)|local-command-(stdout|stderr|caveat)|side-sessions-event|task-notification)>",
     "holdTurns": 3,
     "toolErrors": 4
   },
@@ -59,43 +64,22 @@
     }
   ],
 
-  "_tasks": "The classifier names one of these. Each runs on at least its model and effort; the classifier's effort can raise it, never lower it. Order doesn't matter.",
+  "_tasks": "The classifier names one of these. Each runs on at least its model and effort; the classifier's effort can raise it, never lower it. `not` marks where a task ends. A task with `raiseAbove` is asked about on its own, yes or no, and raises whatever task was named when Jev's chance of yes reaches it. Jev leans slightly toward the first option listed, so the cheap tasks go last: a lean costs money, not quality.",
   "tasks": [
     {
-      "name": "answer",
-      "model": "haiku",
-      "effort": "low",
-      "when": "A question with a direct answer and nothing to change: how something works, what a command, flag or error message means, a factual or how-do-I question. Not a question of whether something is safe, correct or could go wrong, which needs checking."
-    },
-    {
-      "name": "lookup",
-      "model": "haiku",
-      "effort": "medium",
-      "when": "Finding or reading things with no judgement about what to change: searching the code, reading or summarising a file or doc, running a command and reporting what it printed."
-    },
-    {
-      "name": "mechanical",
-      "model": "haiku",
-      "effort": "low",
-      "when": "A small edit whose content the request fully dictates: a rename, a typo, formatting, a version bump, a one-line change spelled out in the request."
-    },
-    {
-      "name": "build",
-      "model": "sonnet",
-      "effort": "medium",
-      "when": "Writing or extending code to a clear goal: a well-specified feature, script or test, fixing a bug whose cause is known or obvious, a refactor within a few files, a commit or PR description."
-    },
-    {
-      "name": "review",
-      "model": "sonnet",
-      "effort": "high",
-      "when": "Checking work rather than doing it: reviewing a diff or file for bugs, verifying a change does what it should, judging whether tests cover enough."
+      "name": "risky",
+      "model": "opus",
+      "effort": "xhigh",
+      "raiseAbove": 0.5,
+      "when": "A mistake in this job would be costly or hard to undo: changing security, auth, secrets or permissions; payments or billing; migrating, overwriting or deleting data; deploying to production or changing live infrastructure; concurrency.",
+      "not": "Nothing here is costly to get wrong or hard to undo: local edits that version control can undo, work on a feature branch, opening a pull request, sending a message, archiving or tidying sessions, moving local files, reading or reporting without changing anything."
     },
     {
       "name": "debug",
       "model": "opus",
       "effort": "high",
-      "when": "Finding the cause of a failure nobody understands yet: a flaky or failing test with no obvious reason, a wrong result, a crash, a slow path, behaviour that differs between environments."
+      "when": "Finding the cause of a failure nobody understands yet: a flaky or failing test with no obvious reason, a wrong result, a crash, a slow path, behaviour that differs between environments.",
+      "not": "A failure whose cause is already known or stated in the request."
     },
     {
       "name": "design",
@@ -104,10 +88,37 @@
       "when": "Deciding how something should be built or changed: architecture, a plan, a refactor across many files or systems, weighing approaches, open-ended research, orchestrating several agents."
     },
     {
-      "name": "risky",
-      "model": "opus",
-      "effort": "xhigh",
-      "when": "Work where a mistake is costly or hard to undo: security, auth, secrets, payments, data migrations or deletion, production deploys or infrastructure, concurrency."
+      "name": "review",
+      "model": "sonnet",
+      "effort": "high",
+      "when": "Checking work rather than doing it: reviewing a diff or file for bugs, verifying a change does what it should, judging whether tests cover enough."
+    },
+    {
+      "name": "build",
+      "model": "sonnet",
+      "effort": "medium",
+      "when": "Writing or extending code or documents to a clear goal: a well-specified feature, script or test, fixing a bug whose cause is known or obvious, a refactor within a few files, a commit or PR description, writing up or updating a document from what has been discussed.",
+      "not": "An open-ended aim with no known way to reach it, such as making something faster or more reliable, which first needs finding where the problem is."
+    },
+    {
+      "name": "lookup",
+      "model": "haiku",
+      "effort": "medium",
+      "when": "Finding or reading things with no judgement about what to change: searching the code, reading or summarising a file or doc, running a command and reporting what it printed."
+    },
+    {
+      "name": "answer",
+      "model": "haiku",
+      "effort": "low",
+      "when": "A question with a direct answer and nothing to change: how something works, what a command, flag or error message means, a factual or how-do-I question.",
+      "not": "A question of whether something is safe, correct or could go wrong, which needs checking."
+    },
+    {
+      "name": "mechanical",
+      "model": "haiku",
+      "effort": "low",
+      "when": "A small edit or action whose content the request fully dictates: a rename, a typo, formatting, a version bump, a one-line change spelled out in the request, a routine git or housekeeping command named in the request.",
+      "not": "Anything where the assistant decides what to write: rewriting a document, applying what was discussed earlier, an edit alongside other work."
     }
   ],
 

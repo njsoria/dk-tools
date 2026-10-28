@@ -134,6 +134,10 @@ async function decide($: EngineInterface, routes: Routes, key: string | undefine
   if (previous !== undefined && followUp !== undefined && new RegExp(followUp, 'i').test(clean(text))) {
     return keepRoute(routes, previous, raises, 'a follow-up, so the route in force')
   }
+  const events = routes.guards?.events
+  if (previous !== undefined && events !== undefined && new RegExp(events, 'i').test(clean(text))) {
+    return keepRoute(routes, previous, raises, 'from the harness, so the route in force')
+  }
   if (previous !== undefined && rows.length > 0 && isThin(routes, text)) {
     return keepRoute(routes, previous, raises, 'too short to classify, so the route in force')
   }

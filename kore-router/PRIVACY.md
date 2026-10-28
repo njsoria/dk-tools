@@ -34,6 +34,8 @@ No request is made when:
 
 - a rule in `routes.json` decides the route,
 - the prompt is a short follow-up or too short to classify,
+- the prompt is a note the harness wrote (a `!` command's output, a side
+  session's note),
 - the router is off (`/router off`), or
 - no TypeSafe key is set. The prompt then runs as your session set it.
 
@@ -75,6 +77,11 @@ requests to TypeSafe and is never written to a log.
 `eval/run.ts` is a development tool that runs only when you start it by hand.
 It sends the sample prompts in `eval/cases.json` to TypeSafe, not your
 conversations.
+
+`eval/replay.ts` is one too. It reads prompts from your own `logs/` and sends
+each to TypeSafe once more, on its own, the same way the plugin sent it the
+first time; it writes them and their routes to `eval/results/`, on your
+machine, which git ignores.
 
 ## Questions and changes
 
