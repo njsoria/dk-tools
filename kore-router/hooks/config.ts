@@ -8,8 +8,12 @@ export type Rates = { input: number; output: number; cacheRead: number; cacheWri
 // request carries more than `above` tokens.
 export type Price = Rates & { longContext?: Rates & { above: number } }
 
-// A kind of job, and the least model and effort it is ever run on.
-export type Task = { name: string; model: string; effort: Effort; when: string }
+// A kind of job, and the least model and effort it is ever run on. `not` says
+// what the kind leaves out, to sharpen its border with the others. A task with
+// `raiseAbove` is not one of the kinds the classifier picks between: Jev asks
+// about it on its own, yes or no, and when the chance of yes reaches
+// `raiseAbove` it raises whatever task was picked, as an `atLeast` rule does.
+export type Task = { name: string; model: string; effort: Effort; when: string; not?: string; raiseAbove?: number }
 
 export type Model = {
   name: string
@@ -25,7 +29,14 @@ export type Rule = { match: string; why: string; atLeast?: boolean } & ({ task: 
 
 export type Routes = {
   classifier: 'jev' | 'haiku'
+  // The Jev release to ask, pinned so a new one can't move the routes before
+  // the eval has run on it. Default `jev-latest`.
+  jevModel?: string
   minConfidence: number
+  // When the kinds of job on a stronger model share at least this much of
+  // Jev's probability, the route moves up to that model even though a kind on
+  // a cheaper one was likelier. Left out, only `minConfidence` decides.
+  upwardMass?: number
   timeoutMs: number
   // Whether a session starts with the router on. Default true; `/router on` and `/router off` change it for one session.
   enabled?: boolean
@@ -49,6 +60,10 @@ export type Routes = {
     // A prompt this matches whole ("yes, go ahead") continues the job under
     // way on the route in force, with no classifier call.
     followUp?: string
+    // A prompt this matches came from the harness, not the person (a `!`
+    // command's output, a CI or side-session event): it keeps the route in
+    // force, with no classifier call.
+    events?: string
     // A prompt of this many words or fewer, with no question mark, is too thin
     // to classify ("router pane"): it keeps the route in force. Default 2; 0 turns it off.
     shortWords?: number
@@ -77,7 +92,14 @@ export function check(routes: Routes) {
   for (const task of routes.tasks) {
     if (!models.has(task.model)) throw new Error(`task ${task.name} names an unknown model: ${task.model}`)
     if (!efforts.has(task.effort)) throw new Error(`task ${task.name} names an unknown effort: ${task.effort}`)
+    if (task.raiseAbove !== undefined && !(task.raiseAbove > 0 && task.raiseAbove <= 1)) {
+      throw new Error(`task ${task.name} has a raiseAbove outside 0 to 1: ${task.raiseAbove}`)
+    }
   }
+  if (routes.upwardMass !== undefined && !(routes.upwardMass > 0 && routes.upwardMass <= 1)) {
+    throw new Error(`upwardMass is outside 0 to 1: ${routes.upwardMass}`)
+  }
+  if (routes.tasks.filter(task => task.raiseAbove === undefined).length < 2) throw new Error('the classifier needs at least two tasks to pick between')
   for (const rule of routes.rules) {
     if ('task' in rule ? !tasks.has(rule.task) : !models.has(rule.model)) {
       throw new Error(`the rule for /${rule.match}/ names an unknown ${'task' in rule ? `task: ${rule.task}` : `model: ${rule.model}`}`)

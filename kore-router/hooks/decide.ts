@@ -73,11 +73,15 @@ export const isThin = (routes: Routes, text: string) => {
 }
 
 // The classifier's task, never run below its own model and effort, nor below
-// any `atLeast` rule the text matched.
+// any task Jev said yes to on its own, nor below any `atLeast` rule the text
+// matched.
 export const fromVerdict = (routes: Routes, verdict: Verdict, raises: Rule[]) =>
   raises.reduce(
     (best, rule) => atLeast(routes, best, ruled(routes, rule)),
-    routeTask(routes, verdict.task.name, verdict.effort, verdict.via),
+    (verdict.raises ?? []).reduce(
+      (best, task) => atLeast(routes, best, routeTask(routes, task.name, undefined, `jev says ${task.name}`)),
+      routeTask(routes, verdict.task.name, verdict.effort, verdict.via),
+    ),
   )
 
 // The model one tier up, or the same at the top.

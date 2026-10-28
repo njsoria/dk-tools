@@ -3,7 +3,11 @@
 // rules, then Jev, then the task floors and `atLeast` rules. Run several times
 // to see how steady the answers are.
 //
-//   npx -y tsx@4.19.2 eval/run.ts [--runs 5] [--routes routes.json] [--cases eval/cases.json]
+//   npx -y tsx@4.19.2 eval/run.ts [--runs 5] [--routes routes.json] [--cases eval/cases.json] [--order reverse]
+//
+// Jev can lean toward the first option it is offered. `--order reverse` offers
+// the tasks in the opposite order: a route that moves with the order is one to
+// tighten in routes.json.
 //
 // It needs TYPESAFE_API_KEY, from the environment or a .env beside routes.json,
 // and makes one Jev call per case per run (well under a cent for the suite).
@@ -26,8 +30,10 @@ const here = __dirname
 const routesPath = resolve(arg('routes', join(here, '..', 'routes.json')))
 const casesPath = resolve(arg('cases', join(here, 'cases.json')))
 const runs = Number(arg('runs', '5'))
+const order = arg('order', 'listed')
 
 const routes = check(JSON.parse(readFileSync(routesPath, 'utf8')) as Routes)
+if (order === 'reverse') routes.tasks.reverse()
 const cases = (JSON.parse(readFileSync(casesPath, 'utf8')) as { cases: Case[] }).cases
 
 const fromFile = () => {
@@ -137,7 +143,7 @@ times.sort((a, b) => a - b)
 const p = (q: number) => Math.round(times[Math.min(times.length - 1, Math.floor(q * times.length))] ?? 0)
 const answered = total - failed
 const report = [
-  `${cases.length} cases × ${runs} runs = ${total} routings (${failed} failed), classifier ${routes.classifier}`,
+  `${cases.length} cases × ${runs} runs = ${total} routings (${failed} failed), classifier ${routes.classifier} ${routes.jevModel ?? ''}, tasks in ${order} order`,
   '',
   `Right model:     ${pct(modelOk, answered)}   (the model the labelled task runs on, or an accepted alternative's)`,
   `Under-routed:    ${pct(under, answered)}   (a weaker model than the job needs: the quality risk)`,
