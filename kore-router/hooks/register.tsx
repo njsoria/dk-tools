@@ -6,9 +6,11 @@
 // Each task has the least model and effort it is ever run on. Guards then
 // raise a turn, never lower it: a floor after the person pushes back or a
 // turn struggles, a model trusted with the conversation's length, and a step
-// down only when it saves more than the switch costs. `/router off` hands the
-// session back to its own model; `/router pane` opens a live view of the
-// decisions; `/router savings` prices what they saved.
+// down only when it saves more than the switch costs. A role (an orchestrator,
+// a worker) holds a session on a model for as long as it plays it, and may cap
+// it there. `/router off` hands the session back to its own model; `/router
+// pane` opens a live view of the decisions; `/router savings` prices what they
+// saved.
 
 // Everything that touches the engine lives in this file: the plugin host
 // follows `$` only into functions declared here. The decisions themselves are
@@ -18,7 +20,26 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import { JEV_URL, type Verdict, clean, clip, haikuSystem, jevBody, readHaiku, readJev, state } from './classify'
 import { type Effort, type Routes, check, dataDir, merge, model, ownRoutes, tier, versionsDir } from './config'
-import { type Floor, type Habits, type Route, type Settled, byRules, escalate, fromVerdict, isThin, keepRoute, routeTask, settle } from './decide'
+import {
+  type Floor,
+  type Habits,
+  type Route,
+  type Settled,
+  byRules,
+  capped,
+  escalate,
+  fromVerdict,
+  isThin,
+  keepRoute,
+  modelsNote,
+  roleFloor,
+  roleFor,
+  roleForSkill,
+  roleOrigins,
+  routeTask,
+  settle,
+  struggle,
+} from './decide'
 import { type Entry, type Spend, savings } from './ledger'
 import { LIME, details, firstLine, summary } from './pane'
 
@@ -182,6 +203,14 @@ async function record($: EngineInterface, entry: Omit<Entry, 'at' | 'sessionId'>
   $.ui.invalidate('ui.render')
 }
 
+// A role set or lifted is a decision of its own, and the line under the prompt
+// shows the role in force.
+async function roleChanged($: EngineInterface, note: string | undefined, entry: { prompt: string; origin?: string }, line: string | undefined) {
+  if (note === undefined) return
+  await record($, { ...entry, note })
+  if (line !== undefined) await show($, line)
+}
+
 const recordSpend = ($: EngineInterface, spend: Omit<Spend, 'at' | 'sessionId'>) => append($, SPEND, spend)
 
 // The newest decisions of this session, newest first. A new chat has its own
@@ -216,6 +245,8 @@ async function spent($: EngineInterface) {
 }
 
 const say = (route: Route) => `${route.name} · ${route.effort} (${route.via})`
+// The router's line, ending with the role in force when there is one.
+const withRole = (text: string, role: string | undefined) => `${text.replace(/ \[[^\]]*\]$/, '')}${role === undefined ? '' : ` [${role}]`}`
 // The middle of a session's figures: one overnight pause mustn't make every
 // prompt look an hour apart.
 const median = (list: number[]) => (list.length === 0 ? undefined : [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)])
@@ -235,6 +266,10 @@ export const register: Register = (on, options) => {
   // A floor the person set with /router floor, and one an escalation set, which counts down.
   let chosen: Floor | undefined
   let floor: Floor | undefined
+  // The role this session plays, by its name in routes.json, until lifted.
+  let role: string | undefined
+  // The origin kind of the newest routed prompt, for its decision line.
+  let origin: string | undefined
   let asked = ''
   // The router's line under the prompt, which opens its pane when clicked; the
   // copy kept here only spares a write when it hasn't changed.
@@ -264,12 +299,27 @@ export const register: Register = (on, options) => {
     tail.push({ role, text: clip(text, 2000) })
     tail.splice(0, Math.max(0, tail.length - TAIL))
   }
+  // Sets the role, or lifts it with undefined, and says what changed: nothing
+  // when the role in force is set again.
+  const changeRole = (name: string | undefined, why: string) => {
+    if (name === role) return undefined
+    const note = name === undefined ? `role lifted: ${role} (${why})` : `role: ${name} (${why})`
+    role = name
+    if (line !== undefined) line = withRole(line, role)
+    return note
+  }
+  // The role in force, its floor and its ceiling, as routes.json now has it.
+  const inForce = (current: Routes) => {
+    const found = role === undefined ? undefined : current.roles?.[role]
+    if (found === undefined) return undefined
+    return { floor: roleFloor(role!, found), ceiling: found.ceiling === undefined ? undefined : { model: found.ceiling, why: `${role}, never above ${found.ceiling}` } }
+  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'router',
       description: 'Model router: turn it on or off, set a floor, or try a prompt against it',
-      argumentHint: '[on | off | pane (or open) | floor <model> | floor off | savings [model | session] | a prompt to try]',
+      argumentHint: '[on | off | pane (or open) | floor <model> | floor off | role [<name> | off] | savings [model | session] | a prompt to try]',
     })
 
     // `"enabled": false` in routes.json starts sessions with the router off.
@@ -390,15 +440,26 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (isOn && FROM_A_PERSON.has(e.origin.kind)) {
+    const isPerson = FROM_A_PERSON.has(e.origin.kind)
+    // A prompt of an origin kind a role is set by (a coordinating session's
+    // hand-off) is routed as a person's is; other notifications are not.
+    let current: Routes | undefined
+    if (isOn && !isPerson) current = await load($).catch(() => undefined)
+    const isRoleOrigin = current !== undefined && roleOrigins(current).has(e.origin.kind)
+    if (isOn && (isPerson || isRoleOrigin)) {
       asked = clip(clean(e.text), 2000)
+      origin = e.origin.kind
       const at = await $.clock.now()
       if (seen.lastPromptAt !== undefined) seen.spans.push(at - seen.lastPromptAt)
       seen.lastPromptAt = at
       // A floor counts down the person's prompts, then lifts.
       if (floor?.turns !== undefined) floor = floor.turns <= 1 ? undefined : { ...floor, turns: floor.turns - 1 }
       try {
-        routes = await load($)
+        routes = current ?? (await load($))
+        const named = roleFor(routes, { text: e.text, origin: e.origin.kind, isPerson })
+        if (named !== undefined) {
+          await roleChanged($, changeRole(named, isPerson ? 'your prompt asked for it' : `a ${e.origin.kind} prompt`), { prompt: asked, origin: e.origin.kind }, line)
+        }
         const pushback = routes.guards?.pushback
         if (pushback !== undefined && lastRan !== undefined && new RegExp(pushback, 'i').test(clean(e.text))) {
           floor = escalate(routes, lastRan, 'escalated: you pushed back on the last turn')
@@ -415,12 +476,34 @@ export const register: Register = (on, options) => {
         // the session's own model when there has been none.
         line = `router: no new route (${(error as Error).message})`
         await show($, line)
-        await record($, { prompt: asked, failed: (error as Error).message })
+        await record($, { prompt: asked, failed: (error as Error).message, origin })
       }
       remember('user', e.text)
     }
 
     return next(e)
+  })
+
+  // A skill routes.json lists under a role sets that role, and the router adds
+  // to its text the models now in force, so the session briefs its workers and
+  // subagents to match. The router is never the reason a skill fails: any
+  // trouble here leaves the skill's text as it was.
+  on('skill.prompt', async ($, e, next) => {
+    let note: string | undefined
+    if (isOn) {
+      try {
+        const current = await load($)
+        const named = roleForSkill(current, e.skill)
+        if (named !== undefined) {
+          note = modelsNote(current, named)
+          await roleChanged($, changeRole(named, `skill ${e.skill}`), { prompt: `/${e.skill}` }, line)
+        }
+      } catch {
+        note = undefined
+      }
+    }
+    const result = await next(e)
+    return note === undefined || typeof result?.text !== 'string' ? result : { ...result, text: `${result.text}\n\n${note}` }
   })
 
   // A subagent starts on the model its task earns, unless it is a fork (which
@@ -444,21 +527,28 @@ export const register: Register = (on, options) => {
       await record($, { prompt: task, failed: (error as Error).message, agent: e.subagentType })
       return next(e)
     }
+    // The router's own pick never goes above the subagents' ceiling; a model
+    // the call named still can.
+    const ceiling = current.subagents?.ceiling
+    const isCapped = ceiling !== undefined && tier(current, wanted.model) > tier(current, ceiling)
+    const picked = isCapped ? model(current, ceiling!).id : wanted.model
     const named = e.model === undefined || e.model === 'inherit' ? undefined : e.model
-    const isNamedKept = named !== undefined && tier(current, named) >= tier(current, wanted.model)
-    const ran = isNamedKept ? (current.models.find(one => one.name === named)?.id ?? named) : wanted.model
+    const isNamedKept = named !== undefined && tier(current, named) >= tier(current, picked)
+    const ran = isNamedKept ? (current.models.find(one => one.name === named)?.id ?? named) : picked
+    const effort = capped(current, ran, wanted.effort)
     const result = await next({ ...e, model: ran })
     if (result.deny !== undefined) return result
     if (result.agentId !== undefined) {
-      agents.set(result.agentId, { effort: wanted.effort, prompt: task, session: e.parentModel, ran, agent: e.subagentType })
+      agents.set(result.agentId, { effort, prompt: task, session: e.parentModel, ran, agent: e.subagentType })
     }
+    const notes = [isCapped && !(isNamedKept && ran !== picked) ? `never above ${ceiling} for a subagent` : undefined, isNamedKept && ran !== picked ? `kept the ${named} the call asked for` : undefined]
     await record($, {
       prompt: task,
       wanted: `${wanted.name} · ${wanted.effort}`,
       via: wanted.via,
-      ran: `${ran} · ${wanted.effort}`,
+      ran: `${ran} · ${effort}`,
       held: false,
-      note: isNamedKept && ran !== wanted.model ? `kept the ${named} the call asked for` : undefined,
+      note: notes.filter(one => one !== undefined).join('; ') || undefined,
       agent: e.subagentType,
     })
     return result
@@ -480,7 +570,16 @@ export const register: Register = (on, options) => {
 
     if (!pinned.has(e.turnId)) {
       const isRouted = isOn && latest !== undefined && routes !== undefined
-      const now = { before: lastModel ?? e.model, context: lastContext, messages: e.messageCount, floors: [chosen, floor].filter(one => one !== undefined), habits: habits() }
+      const playing = isRouted ? inForce(routes!) : undefined
+      const now = {
+        before: lastModel ?? e.model,
+        context: lastContext,
+        messages: e.messageCount,
+        floors: [floor, playing?.floor].filter(one => one !== undefined),
+        ceiling: playing?.ceiling,
+        chosen,
+        habits: habits(),
+      }
       const ran = isRouted ? settle(routes!, latest!, now) : undefined
       pinned.set(e.turnId, ran)
       errors = 0
@@ -496,6 +595,7 @@ export const register: Register = (on, options) => {
           session: e.model,
           sessionEffort: e.effort,
           messages: e.messageCount,
+          origin,
           ...timing,
         })
         open.set(e.turnId, {
@@ -513,7 +613,7 @@ export const register: Register = (on, options) => {
       if (ran !== undefined && routes !== undefined && !struggled.has(e.turnId) && errors >= limit) {
         struggled.add(e.turnId)
         const up = escalate(routes, ran, `escalated: ${errors} tool errors in one turn`)
-        const raised = { model: model(routes, up.model).id, effort: up.effort ?? ran.effort, note: up.why }
+        const raised = { ...struggle(routes, ran, up, inForce(routes)?.ceiling?.model), note: up.why }
         if (tier(routes, raised.model) > tier(routes, ran.model) || raised.effort !== ran.effort) {
           floor = up
           lastRan = raised
@@ -527,7 +627,10 @@ export const register: Register = (on, options) => {
     const route = pinned.get(e.turnId)
     lastModel = route?.model ?? e.model
     steps.set(e.turnId, e.index + 1)
-    const said = route === undefined ? line : `router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`
+    const said =
+      route === undefined
+        ? line
+        : withRole(`router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`, role)
     if (said !== line) {
       line = said
       await show($, line)
@@ -577,10 +680,32 @@ export const register: Register = (on, options) => {
       await $.ui.open({ id: PANE, title: 'Kore Model Router' })
       return { text: 'Router pane opened.' }
     }
+    // Lifting the floor lifts a role's too.
     if (args === 'floor off') {
       chosen = undefined
       floor = undefined
+      await roleChanged($, changeRole(undefined, '/router floor off'), { prompt: '/router floor off' }, line)
       return { text: 'Floor lifted.' }
+    }
+    if (args === 'role off') {
+      const was = role
+      await roleChanged($, changeRole(undefined, '/router role off'), { prompt: '/router role off' }, line)
+      return { text: was === undefined ? 'No role to lift.' : `Role ${was} lifted.` }
+    }
+    if (args === 'role' || args.startsWith('role ')) {
+      try {
+        const current = await load($)
+        const named = args.slice('role'.length).trim()
+        const names = Object.keys(current.roles ?? {})
+        if (named === '') return { text: role === undefined ? `No role. Roles: ${names.join(', ') || 'none in routes.json'}.` : `Role: ${role}.` }
+        const found = current.roles?.[named]
+        if (found === undefined) return { text: `No role called ${named}. Roles: ${names.join(', ') || 'none in routes.json'}.` }
+        await roleChanged($, changeRole(named, '/router role'), { prompt: `/router ${args}` }, line)
+        const ceiling = found.ceiling === undefined ? '' : `, never above ${found.ceiling}`
+        return { text: `This session plays ${named}: at least ${found.model} · ${found.effort}${ceiling}, until /router role off.` }
+      } catch (error) {
+        return { text: (error as Error).message }
+      }
     }
     if (args.startsWith('floor ')) {
       try {
@@ -604,7 +729,8 @@ export const register: Register = (on, options) => {
         .filter(one => one !== undefined)
         .map(one => ` Floor: ${one.model}${one.effort === undefined ? '' : ` · ${one.effort}`} (${one.why}${one.turns === undefined ? '' : `, ${one.turns} more prompts`}).`)
         .join('')
-      return { text: `Router is ${isOn ? 'on' : 'off'}.${last}${held}` }
+      const plays = role === undefined ? '' : ` Role: ${role}.`
+      return { text: `Router is ${isOn ? 'on' : 'off'}.${last}${held}${plays}` }
     }
     try {
       return { text: say(await decide($, await load($), key, args, tail)) }

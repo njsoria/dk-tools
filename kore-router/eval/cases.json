@@ -170,6 +170,18 @@
       ]
     },
     {
+      "prompt": "split the consent feature across three sub-sessions, one per repo, and say who owns which files",
+      "task": "design"
+    },
+    {
+      "prompt": "plan the change to the session format across the web app, the API and the mobile client, in the order each has to ship",
+      "task": "design"
+    },
+    {
+      "prompt": "decide which agent owns which files before we start the four workers on the export rewrite",
+      "task": "design"
+    },
+    {
       "prompt": "rotate the TypeSafe API key and update every place it's stored",
       "task": "risky"
     },
@@ -454,6 +466,40 @@
     },
     {
       "prompt": "merged. close out the issue and delete the branch",
+      "task": "mechanical",
+      "also": [
+        "build"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "the three workers have reported back. check their branches against the plan and work out how to combine them into pull requests",
+      "task": "design",
+      "also": [
+        "review"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "the plan is approved: add the --since flag to the export command exactly as step 2 describes",
+      "task": "build",
+      "hard": true
+    },
+    {
+      "prompt": "what does the orchestrate skill do when two workers need the same file?",
+      "task": "answer",
+      "also": [
+        "lookup"
+      ],
+      "hard": true
+    },
+    {
+      "prompt": "start one Explore subagent to find every place that reads routes.json",
+      "task": "lookup",
+      "hard": true
+    },
+    {
+      "prompt": "merge the approved PR for the exporter into develop",
       "task": "mechanical",
       "also": [
         "build"

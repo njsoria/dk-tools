@@ -21,7 +21,8 @@
       "longContext": { "above": 100000, "input": 0.5, "output": 2.5, "cacheRead": 0.05, "cacheWrite": 1 }
     },
     "claude-sonnet-5-5": { "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 4 },
-    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 8 }
+    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 8 },
+    "claude-fable-5-2": { "input": 8, "output": 40, "cacheRead": 0.2, "cacheWrite": 16 }
   },
 
   "_switching": "A step down to a cheaper model happens only when it saves `margin` times what the switch costs: the cheaper model writing the whole conversation into its cache, and the stronger one doing it again on the way back if its cache expired. The expected figures stand in until the session has turns of its own.",
@@ -49,6 +50,24 @@
       "claude-code-guide": "answer",
       "statusline-setup": "mechanical",
       "Plan": "design"
+    },
+    "ceiling": "opus"
+  },
+
+  "_roles": "A part a session plays, tried in the order listed. Once set it holds the session on at least its model and effort until `/router role off` or `/router floor off`, and with `ceiling` never above that model unless your own `/router floor` says so. A prompt you send that `match`es sets it, as does a prompt whose origin kind is in `origins` (a coordinating session's hand-off to a worker is `coordinator`) or a skill in `skills`. A prompt of an origin kind listed here is routed as yours is.",
+  "roles": {
+    "orchestrator": {
+      "model": "fable",
+      "effort": "high",
+      "skills": ["orchestrate"],
+      "match": "^\\s*/?orchestrate\\b|\\b(fan (this|it|that) out|use sub-?sessions|split (this|it|that) across agents)\\b"
+    },
+    "worker": {
+      "model": "opus",
+      "effort": "high",
+      "ceiling": "opus",
+      "origins": ["coordinator"],
+      "match": "^\\s*router:\\s*worker\\b"
     }
   },
 
@@ -75,17 +94,17 @@
       "not": "Nothing here is costly to get wrong or hard to undo: local edits that version control can undo, work on a feature branch, opening a pull request, sending a message, archiving or tidying sessions, moving local files, reading or reporting without changing anything."
     },
     {
+      "name": "design",
+      "model": "fable",
+      "effort": "high",
+      "when": "Deciding how something should be built or changed: architecture, a plan, a refactor across many files or systems, weighing approaches, open-ended research; planning a job with several parts, splitting it across agents or sessions, checking and combining what they return."
+    },
+    {
       "name": "debug",
       "model": "opus",
       "effort": "high",
       "when": "Finding the cause of a failure nobody understands yet: a flaky or failing test with no obvious reason, a wrong result, a crash, a slow path, behaviour that differs between environments.",
       "not": "A failure whose cause is already known or stated in the request."
-    },
-    {
-      "name": "design",
-      "model": "opus",
-      "effort": "high",
-      "when": "Deciding how something should be built or changed: architecture, a plan, a refactor across many files or systems, weighing approaches, open-ended research, orchestrating several agents."
     },
     {
       "name": "review",
@@ -122,11 +141,12 @@
     }
   ],
 
-  "_models": "Weakest first. maxContext is the most context, in tokens, a model is trusted to work in; past it the router keeps a stronger one.",
+  "_models": "Weakest first. maxContext is the most context, in tokens, a model is trusted to work in; past it the router keeps a stronger one. maxEffort is the most effort a model is run at; past it, it costs more for uneven gain. escalateFrom makes a pushback or a struggling turn think a level harder on the model beneath until it reaches that effort, before moving up to this one: effort before model.",
   "models": [
     { "name": "haiku", "id": "claude-haiku-5-5", "maxContext": 100000 },
     { "name": "sonnet", "id": "claude-sonnet-5-5" },
-    { "name": "opus", "id": "claude-opus-5-5" }
+    { "name": "opus", "id": "claude-opus-5-5" },
+    { "name": "fable", "id": "claude-fable-5-2", "maxEffort": "high", "escalateFrom": "xhigh" }
   ],
 
   "efforts": [
