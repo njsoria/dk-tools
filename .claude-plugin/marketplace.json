@@ -45,6 +45,25 @@
         "waiting",
         "inbox"
       ]
+    },
+    {
+      "name": "repoVis",
+      "source": "./repo-visibility",
+      "description": "Shows under the prompt whether the repo you are in is private or public on GitHub.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Nate Soria",
+        "url": "https://github.com/njsoria"
+      },
+      "homepage": "https://github.com/njsoria/dk-tools/tree/main/repo-visibility",
+      "repository": "https://github.com/njsoria/dk-tools",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "status-line",
+        "visibility",
+        "safety"
+      ]
     }
   ]
 }

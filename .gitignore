@@ -11,3 +11,6 @@ kore-router/routes.spend.jsonl
 
 # kore-finisher: each session's waiting and pull-request records.
 kore-finisher/logs/
+
+# repo-visibility: the API types Claude Code lays beside a loaded mod.
+repo-visibility/.claude-plugin/types/
