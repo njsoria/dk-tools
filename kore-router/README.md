@@ -1,4 +1,4 @@
-![Kore Model Router](assets/logo.svg)
+![Kore Model Router: one prompt in, four models out, one route chosen](assets/logo.svg)
 
 # Kore Model Router
 
@@ -91,6 +91,11 @@ claude --plugin-dir path/to/kore-router
    `upwardMass` (0.4) of Jev's probability, the route takes that model even if
    a cheaper task was the likeliest one: a route too low costs quality, one too
    high only money, so moving up needs less than winning does.
+5. **Fable is earned, not rounded up to.** A model with its own
+   `minConfidence` (Fable's is 0.5) keeps a kind of job only when Jev names
+   that kind and is at least that sure of it. Otherwise the kind runs on the
+   model beneath, so an unsure `design` runs on Opus, as it did before Fable,
+   and neither doubt nor `upwardMass` moves a route onto Fable.
 
 The harness's own `<system-reminder>` notes are stripped first, so they
 neither trip a rule nor sway the classifier.
@@ -149,7 +154,7 @@ matches wins.
 The ceiling applies after the floors and the context guard. Only your own
 floor goes above it: `/router floor fable` in a worker session runs Fable.
 While a role is set, the line under the prompt ends with its name
-(`router: opus · high (worker) [worker]`), and setting or lifting one is a row
+(`router: opus · high [worker]`), and setting or lifting one is a row
 of its own in the pane.
 
 ## Subagents
@@ -320,21 +325,23 @@ Jev can lean toward the option it is offered first, so `--order reverse`
 offers the tasks the other way round: a route that moves with the order is one
 to tighten in `routes.json`.
 
-Latest result, `jev-1.14.0`, 70 cases:
+Latest result, `jev-1.14.0`, 78 cases:
 
 | Measure | 5 runs, listed order | 3 runs, reversed |
 | --- | --- | --- |
 | Right model | 100% (plain 100%, hard 100%) | 100% |
 | Under-routed (the quality risk) | 0% | 0% |
 | Over-routed (the cost) | 0% | 0% |
-| Right task | 98% (91% the exact label) | 99% (94%) |
-| Same route on every run | 91% | 94% |
-| Latency | p50 100 ms, p95 143 ms | p50 117 ms, p95 238 ms |
+| Right task | 96% (90% the exact label) | 97% (94%) |
+| Same route on every run | 90% | 96% |
+| Latency | p50 142 ms, p95 201 ms | p50 142 ms, p95 198 ms |
 
-The routes that vary between runs vary in effort, not model. The same suite
-with the `routes.json` of 0.6.0 (risky as one more kind of job) gets 94% right
-and 6% over-routed: it sends archiving a session, moving a folder and closing
-an issue to Opus at extra-high effort.
+The routes that vary between runs vary in effort or between two tasks on the
+same model, not in model. Without Fable's `minConfidence` the same suite gets
+96% right, 3% over-routed and 1% under-routed: "rotate the TypeSafe API key
+and update every place it's stored" lands on Fable on every run, as a `design`
+Jev is 25 to 40% sure of. Every true design case in the suite scores 51% or
+more.
 
 Treat these as a floor test, not a promise. The cases were written alongside
 the routing rules, and several rounds of tuning came from misses this suite
@@ -362,7 +369,9 @@ writes every prompt and route to `eval/results/`, which git ignores: it holds
 your prompts. On 400 of the author's prompts, splitting out the stakes and
 keeping harness notes on the route in force took Opus from 47% of them to 33%,
 mostly merges, archiving, PR chores and `!` command output moving to Haiku or
-Sonnet.
+Sonnet. Moving `design` to Fable in 0.8.0 sent 17 of 400 (4%) to Fable, all of
+them from Opus; before Fable had a `minConfidence` it was 41, and 18 of those
+were a `design` Jev was less than 50% sure of.
 
 The pushback guard has its own offline check, with no key or API call. It tests
 `guards.pushback` against the corrections and near-misses under `pushback` in
@@ -410,7 +419,7 @@ together when they are read.
 | `roles` | Each role's least `model` and `effort`, an optional `ceiling` model, and what sets it: `match` (a regex on your prompt), `origins` (prompt origin kinds, such as `coordinator`) and `skills` (skill names). Tried in the order listed |
 | `rules` | `match` (regex), then a `task` or a `model` and `effort`, a `why`, and `atLeast` to raise rather than decide |
 | `tasks` | `name`, the least `model` and `effort` it runs on, a `when` the classifier reads, an optional `not` that marks where the task ends, and an optional `raiseAbove` that asks about it on its own, yes or no. Jev leans slightly toward the option listed first, so list the costly tasks first |
-| `models` | `name`, `id`, optional `maxContext`, `maxEffort` (the most effort it runs at) and `escalateFrom` (the effort the model beneath reaches before a pushback or struggling turn moves up to this one). Order them weakest to strongest |
+| `models` | `name`, `id`, optional `maxContext`, `maxEffort` (the most effort it runs at), `minConfidence` (how sure the classifier must be of a kind of job for it to run on this model rather than the one beneath) and `escalateFrom` (the effort the model beneath reaches before a pushback or struggling turn moves up to this one). Order them weakest to strongest |
 | `efforts` | Levels, weakest to strongest, each with a `when` |
 
 The `when` of each task is the router's whole idea of your work. Edit it to
@@ -424,11 +433,11 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 68 tests that read as the router's
+runs `hooks/register.test.ts`, 71 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
-no model calls. `hooks/config.test.ts` adds 10 for where the router keeps its
+no model calls. `hooks/config.test.ts` adds 11 for where the router keeps its
 logs and your `routes.json`, and for what its check refuses.
 
 The CLI and the desktop app each carry their own copy of the engine, and the
