@@ -26,7 +26,7 @@ const ROUTES = {
   subagents: { classify: true, types: { Explore: 'lookup' }, ceiling: 'opus' },
   roles: {
     orchestrator: { model: 'fable', effort: 'high', skills: ['orchestrate'], match: '^\\s*/?orchestrate\\b|\\b(fan (this|it|that) out|use sub-?sessions)\\b' },
-    worker: { model: 'opus', effort: 'high', ceiling: 'opus', origins: ['coordinator'], match: '^\\s*router:\\s*worker\\b' },
+    worker: { model: 'opus', effort: 'high', ceiling: 'opus', origins: ['coordinator'], match: '(^|\\n)[ \\t]*router:[ \\t]*worker\\b' },
   },
   rules: [
     { match: '\\bultrathink\\b', model: 'opus', effort: 'max', why: 'asked for maximum thinking' },
@@ -493,6 +493,23 @@ test('a coordinator prompt holds a worker on Opus · high, is routed, and never 
     ['claude-opus-5-5', 'high'],
     ['claude-opus-5-5', 'high'],
   ])
+})
+
+test('a brief the desktop app delivers, its `Router: worker` line under the starting session\'s background, holds a worker too', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0) })
+  await $.prompt.submit({
+    text: 'Background (from the session that started this one):\nThe importer is being split in three.\n\nRouter: worker\n\nAdd paging to the importer.',
+    wait: false,
+    origin: { kind: 'sdk' },
+  })
+  await step($)
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test('a mention of the router and a worker inside a sentence sets no role', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0) })
+  await ask($, 'does the router: worker line need to come first?')
+  expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5' })
 })
 
 test('a brief that opens `Router: worker` holds a worker on Opus · high from a person too', async ($, on) => {

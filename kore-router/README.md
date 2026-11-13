@@ -134,7 +134,9 @@ A role is set when:
 
 - a prompt you send matches its `match`: `/orchestrate`, "fan this out", "use
   sub-sessions" or "split this across agents" for the orchestrator, and a brief
-  whose first line is `Router: worker` for the worker;
+  with a line that starts `Router: worker` for the worker. The desktop app's
+  `start_session` delivers a brief as an `sdk` prompt with the starting
+  session's background above it, so the line counts wherever it starts a line;
 - a prompt arrives whose origin kind is in its `origins`. A coordinating
   session's hand-off to a worker session has the kind `coordinator`, which
   sets the worker. Such a prompt is routed as yours is, so a risky brief can
@@ -433,7 +435,7 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 71 tests that read as the router's
+runs `hooks/register.test.ts`, 73 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and

@@ -54,14 +54,14 @@
     "ceiling": "opus"
   },
 
-  "_roles": "A part a session plays, tried in the order listed. Once set it holds the session on at least its model and effort until `/router role off` or `/router floor off`, and with `ceiling` never above that model unless your own `/router floor` says so. A prompt you send that `match`es sets it, as does a prompt whose origin kind is in `origins` (a coordinating session's hand-off to a worker is `coordinator`) or a skill in `skills`. A prompt of an origin kind listed here is routed as yours is.",
+  "_roles": "A part a session plays, tried in the order listed. Once set it holds the session on at least its model and effort until `/router role off` or `/router floor off`, and with `ceiling` never above that model unless your own `/router floor` says so. A prompt you send that `match`es sets it, as does a prompt whose origin kind is in `origins` (a coordinating session's hand-off to a worker is `coordinator`) or a skill in `skills`. A prompt of an origin kind listed here is routed as yours is. The desktop app's start_session delivers a brief as `sdk`, with the starting session's background above it, so the worker's `match` looks for `Router: worker` at the start of any line, not only the first.",
   "roles": {
     "worker": {
       "model": "opus",
       "effort": "high",
       "ceiling": "opus",
       "origins": ["coordinator"],
-      "match": "^\\s*router:\\s*worker\\b"
+      "match": "(^|\\n)[ \\t]*router:[ \\t]*worker\\b"
     },
     "orchestrator": {
       "model": "fable",
