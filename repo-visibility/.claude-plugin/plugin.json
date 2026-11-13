@@ -6,6 +6,5 @@
   "author": {
     "name": "Nate Soria",
     "url": "https://github.com/njsoria"
-  },
-  "types": "./types/index.d.ts"
+  }
 }

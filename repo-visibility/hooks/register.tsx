@@ -1,4 +1,3 @@
-import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 type Seen = { cwd: string; at: number; text: string | undefined }
@@ -23,16 +22,11 @@ export function describe(stdout: string): string | undefined {
   return undefined
 }
 
-/** The line without the repo's name: `🔒 private`. */
-export function short(text: string): string {
-  return text.split(' · ')[0] ?? text
-}
-
-// Drawn by the ui.render hooks below; a write redraws them.
-const line = atom({ plugin: 'repoVis', key: 'line' } as const, null)
-
 let seen: Seen | undefined
 
+// The plugin's own status line under the prompt, on every surface. It is not
+// drawn into the desktop footer's mode labels: that slot is one short label,
+// and kore-model-router's line already fills it.
 async function refresh($: EngineInterface) {
   const cwd = await $.session.cwd()
   if (seen && seen.cwd === cwd && Date.now() - seen.at < MAX_AGE_MS) return
@@ -46,8 +40,10 @@ async function refresh($: EngineInterface) {
   } catch {
     text = undefined
   }
+  // A failed check keeps the last answer for the same folder.
+  if (text === undefined && seen?.cwd === cwd) text = seen.text
   seen = { cwd, at: Date.now(), text }
-  await update($, line, () => text ?? null)
+  $.ui.status(text)
 }
 
 export const register: Register = on => {
@@ -59,38 +55,5 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     await refresh($)
     return next(e)
-  })
-
-  // The terminal's line under the prompt: the repo first, the engine's own
-  // hints after it.
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const text = await read($, line)
-    if (text === null) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-
-    return (
-      <Box columnGap={2}>
-        <Text dimColor>{text}</Text>
-        {await next(e)}
-      </Box>
-    )
-  })
-
-  // The desktop app never asks for the hint line; under its input bar it draws
-  // the session's mode labels, so there the repo sits beside them. That row is
-  // narrow, so it shows the visibility alone. Plain text, not a Button: a
-  // second Button in that row hid kore-model-router's.
-  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
-    if (e.surface === 'terminal') return next(e)
-    const text = await read($, line)
-    if (text === null) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-
-    return (
-      <Box columnGap={1}>
-        <Text dimColor>{short(text)}</Text>
-        {await next(e)}
-      </Box>
-    )
   })
 }
