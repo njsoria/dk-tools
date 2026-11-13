@@ -78,22 +78,17 @@ export const register: Register = on => {
 
   // The desktop app never asks for the hint line; under its input bar it draws
   // the session's mode labels, so there the repo sits beside them. That row is
-  // narrow, so it shows the visibility alone; a click shows the repo's name.
+  // narrow, so it shows the visibility alone. Plain text, not a Button: a
+  // second Button in that row hid kore-model-router's.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     if (e.surface === 'terminal') return next(e)
     const text = await read($, line)
     if (text === null) return next(e)
-    const { Box, Button } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
 
     return (
       <Box columnGap={1}>
-        <Button
-          key="repo-vis-line"
-          plain
-          dimColor
-          label={short(text)}
-          onPress={() => $.ui.toast(text)}
-        />
+        <Text dimColor>{short(text)}</Text>
         {await next(e)}
       </Box>
     )
