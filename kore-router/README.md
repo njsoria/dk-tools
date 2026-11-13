@@ -1,4 +1,4 @@
-![Kore Model Router](assets/logo.svg)
+![Kore Model Router: one prompt in, four models out, one route chosen](assets/logo.svg)
 
 # Kore Model Router
 
@@ -7,9 +7,10 @@ and effort its job deserves. Leave your session on your strongest model and
 stop paying for it on small jobs, without risking the big ones.
 
 For every prompt you type and every subagent the session starts, the router
-picks a model (Haiku, Sonnet or Opus) and an effort level and applies them to
-that turn's requests. Your session's own setting is untouched, and
-`/router off` hands it straight back.
+picks a model (Haiku, Sonnet, Opus or Fable) and an effort level and applies
+them to that turn's requests. Fable 5.2 designs and coordinates, Opus 5.5 does
+the heavy work, and Sonnet and Haiku take the rest. Your session's own setting
+is untouched, and `/router off` hands it straight back.
 
 It runs in the Claude Code CLI and the desktop app, and was built and tested
 on Claude Code 2.1.285. Its pane draws with elements every Claude Code surface
@@ -63,10 +64,12 @@ claude --plugin-dir path/to/kore-router
    keeps the route in force the same way.
 3. **Otherwise a classifier names the task.** It reads the prompt and the last
    few lines of the conversation (so "ok, do it" is judged by the job under
-   way) against the `when` (and `not`) of each task: `debug`, `design`,
+   way) against the `when` (and `not`) of each task: `design`, `debug`,
    `review`, `build`, `lookup`, `answer` or `mechanical`. Each task has the
    least model and effort it runs on, and the classifier's effort can raise
-   that, never lower it.
+   that, never lower it. `design` (architecture, a plan, weighing approaches,
+   planning a job with several parts and splitting it across agents or
+   sessions) runs on Fable at high effort; `debug` and `risky` run on Opus.
    - **Jev** (the default) is TypeSafe's classifier. One request asks three
      things at once: which kind of job it is (a Choice), how much thinking it
      needs (a Score), and, on its own, whether a mistake in it would be costly
@@ -88,9 +91,19 @@ claude --plugin-dir path/to/kore-router
    `upwardMass` (0.4) of Jev's probability, the route takes that model even if
    a cheaper task was the likeliest one: a route too low costs quality, one too
    high only money, so moving up needs less than winning does.
+5. **Fable is earned, not rounded up to.** A model with its own
+   `minConfidence` (Fable's is 0.5) keeps a kind of job only when Jev names
+   that kind and is at least that sure of it. Otherwise the kind runs on the
+   model beneath, so an unsure `design` runs on Opus, as it did before Fable,
+   and neither doubt nor `upwardMass` moves a route onto Fable.
 
 The harness's own `<system-reminder>` notes are stripped first, so they
 neither trip a rule nor sway the classifier.
+
+A role, when the session plays one, then holds the route at its floor and
+under its ceiling (see [Roles](#roles)). Last, no model runs above its
+`maxEffort`: Fable's is high, so a route that asks for Fable at extra-high
+effort runs at high.
 
 ### Why classify at all
 
@@ -104,6 +117,48 @@ the transcript each time, and gives up after `timeoutMs` (2 seconds), leaving
 the route in force. Each decision logs `classifyMs` and `routeMs`, and the
 pane shows both, so you can see what routing costs in your own sessions.
 
+## Roles
+
+A role is a part the session plays. It holds the session on at least its model
+and effort from when it is set until it is lifted, and with a `ceiling` keeps
+it from going above that model. Two ship in `routes.json`:
+
+- **orchestrator**: Fable at high effort. For a session that plans a large job,
+  hands its parts to subagents and worker sessions, and checks what comes
+  back.
+- **worker**: Opus at high effort, and never above Opus. For a session another
+  session started to do one part of the job. Without it, a worker started on
+  Opus would classify its brief as `build` and step down to Sonnet.
+
+A role is set when:
+
+- a prompt you send matches its `match`: `/orchestrate`, "fan this out", "use
+  sub-sessions" or "split this across agents" for the orchestrator, and a brief
+  with a line that starts `Router: worker` for the worker. The desktop app's
+  `start_session` delivers a brief as an `sdk` prompt with the starting
+  session's background above it, so the line counts wherever it starts a line;
+- a prompt arrives whose origin kind is in its `origins`. A coordinating
+  session's hand-off to a worker session has the kind `coordinator`, which
+  sets the worker. Such a prompt is routed as yours is, so a risky brief can
+  still raise the effort above the worker's floor. Other notifications are not
+  routed;
+- a skill in its `skills` runs: the `orchestrate` skill sets the orchestrator.
+  The router then adds a short "Models in force" note to the skill's text: the
+  model and effort the session is held on, the `model` and `effort` to start
+  write sessions with, the `Router: worker` line to open each brief with, and
+  that subagents are best left with no `model` named;
+- you run `/router role <name>`.
+
+A new role replaces the one before. `/router role off` lifts it, and so does
+`/router floor off`. Roles are tried in the order listed, and the first that
+matches wins.
+
+The ceiling applies after the floors and the context guard. Only your own
+floor goes above it: `/router floor fable` in a worker session runs Fable.
+While a role is set, the line under the prompt ends with its name
+(`router: opus · high [worker]`), and setting or lifting one is a row
+of its own in the pane.
+
 ## Subagents
 
 When the session starts a subagent, the router picks its model too:
@@ -112,9 +167,14 @@ When the session starts a subagent, the router picks its model too:
   (`Explore` is a `lookup`, `Plan` is a `design`).
 - Any other type is classified on its own description and prompt, without the
   main conversation.
+- The router's own pick never goes above `subagents.ceiling` (Opus): a
+  `design` subagent, such as a `Plan` agent, runs on Opus at high effort, not
+  Fable.
 - If the Agent call named a model, it is kept when it is at least as strong as
-  the task's, and raised to the task's when it is weaker.
-- The subagent's requests then take the task's effort.
+  the router's pick, and raised to it when it is weaker. A call that names
+  `fable` gets Fable.
+- The subagent's requests then take the task's effort, no higher than the
+  model's `maxEffort`.
 
 Forks (which must share their parent's model), teammates and a workflow's
 agents are left alone. A subagent starts with an empty cache, so moving it to
@@ -129,7 +189,10 @@ The router raises a turn when in doubt and never lowers one:
 - **Pushback escalates.** A prompt that matches `guards.pushback` ("that's
   wrong", "still failing", "no, the other one"...) runs a tier above the turn it
   answers, and so do the next `holdTurns - 1` prompts. At the top tier it
-  thinks a level harder instead. Blunt openers ("no", "wrong", "revert") count
+  thinks a level harder instead. Below a model with `escalateFrom` (Fable's is
+  extra-high) it is effort before model: an Opus turn below extra-high runs on
+  Opus a level harder, and only an Opus turn already at extra-high moves to
+  Fable. Blunt openers ("no", "wrong", "revert") count
   only at the start of the prompt. Softer corrections and frustration ("I'm
   talking about...", "I said...", "I meant...", "I don't need you to...",
   "it still doesn't work", "that's wrong") count at the start of any sentence
@@ -142,11 +205,15 @@ The router raises a turn when in doubt and never lowers one:
 - **A struggling turn moves up.** After `guards.toolErrors` failed tool calls
   in one turn below the top model, the rest of the turn runs a tier up, and the
   floor holds for the next few prompts.
+- **Effort limits.** A model's `maxEffort` is the most effort it runs at; past
+  it, it costs more for uneven gain. Fable's is high. A route, an escalation or
+  a subagent that asks for more runs at that.
 - **Context limits.** A model's `maxContext` is the most conversation it is
   trusted with. Past it (Haiku's is 100K tokens, where its price also rises
   fivefold) the router keeps a stronger model, whatever the task.
 - **Your own floor.** `/router floor sonnet` keeps the session at Sonnet or
-  above until `/router floor off`. An escalation running out doesn't lift it.
+  above until `/router floor off`. An escalation running out doesn't lift it,
+  and a role's ceiling doesn't hold it down.
 - **Failures fall back.** If routing fails for any reason (no key, a timeout, a
   mistake in `routes.json`), the prompt runs on the route already in force, or
   as the session set it. The router is never the reason a prompt fails.
@@ -170,9 +237,12 @@ least `switching.margin` (1.5) times what the switch costs, worked out from:
 
 At current prices a step from Opus to Haiku pays at almost any length under
 100K. A step from Opus to Sonnet almost never pays once there is a
-conversation, since Sonnet 5.5's cache reads cost the same as Opus 5.5's: the
-router keeps Opus and still lowers the effort. Changing effort alone doesn't
-rewrite the cache.
+conversation: Sonnet 5.5's cache reads are half the price of Opus 5.5's ($0.10
+against $0.20 per million), which is small beside the $4 per million Sonnet
+charges to write the conversation into its own cache. The router keeps Opus and
+still lowers the effort. Changing effort alone doesn't rewrite the cache. Fable
+5.2's cache reads cost the same as Opus 5.5's, so a session that has moved to
+Fable tends to stay there at a lower effort.
 
 A model not in `pricing` falls back to a plain rule: no step down past
 `fallbackMessages` (30) messages.
@@ -201,11 +271,14 @@ and again to close it, or run `/router pane`. Other surfaces don't show it yet.
 
 | Command | What it does |
 | --- | --- |
-| `/router` | Shows whether the router is on, the last route and any floor |
+| `/router` | Shows whether the router is on, the last route, any floor and the role |
 | `/router on`, `/router off` | Turn it on, or hand the session back to its own model |
 | `/router pane`, `/router open` | Open the pane |
 | `/router floor <model>` | Never run below this model until `/router floor off` |
-| `/router floor off` | Lift your floor and any escalation |
+| `/router floor off` | Lift your floor, any escalation and any role |
+| `/router role` | Show the role in force, or the roles there are |
+| `/router role <name>` | Play a role from `routes.json` (`orchestrator`, `worker`) until lifted |
+| `/router role off` | Lift the role |
 | `/router savings` | Price what the router saved against your baseline model |
 | `/router savings sonnet` | The same, against another model from `routes.json` |
 | `/router savings session` | Against whatever model you had selected for each turn |
@@ -236,12 +309,14 @@ What the figure leaves out:
 
 ## Accuracy
 
-`eval/cases.json` holds 70 labelled prompts. The first 44 are plain, everyday
-asks. The other 26 are deliberately hard: debugging phrased as a question,
+`eval/cases.json` holds 78 labelled prompts. The first 47 are plain, everyday
+asks. The other 31 are deliberately hard: debugging phrased as a question,
 risky work phrased as a quick fix, risky work with none of the risky rule's
 words (so Jev alone has to see the stakes), routine actions that sound
 consequential (merging, archiving, moving files), pasted stack traces, two
-jobs in one prompt, and bare follow-ups like "make it faster". `eval/run.ts`
+jobs in one prompt, bare follow-ups like "make it faster", and near-misses
+for orchestration (a build that mentions a plan, a question about the
+orchestrate skill, a single search subagent). `eval/run.ts`
 sends each through the same code the plugin runs before a turn (rules,
 classifier, task floors) and scores the model it lands on:
 
@@ -254,21 +329,23 @@ Jev can lean toward the option it is offered first, so `--order reverse`
 offers the tasks the other way round: a route that moves with the order is one
 to tighten in `routes.json`.
 
-Latest result, `jev-1.14.0`, 70 cases:
+Latest result, `jev-1.14.0`, 78 cases:
 
 | Measure | 5 runs, listed order | 3 runs, reversed |
 | --- | --- | --- |
 | Right model | 100% (plain 100%, hard 100%) | 100% |
 | Under-routed (the quality risk) | 0% | 0% |
 | Over-routed (the cost) | 0% | 0% |
-| Right task | 98% (91% the exact label) | 99% (94%) |
-| Same route on every run | 91% | 94% |
-| Latency | p50 100 ms, p95 143 ms | p50 117 ms, p95 238 ms |
+| Right task | 96% (90% the exact label) | 97% (94%) |
+| Same route on every run | 90% | 96% |
+| Latency | p50 142 ms, p95 201 ms | p50 142 ms, p95 198 ms |
 
-The routes that vary between runs vary in effort, not model. The same suite
-with the `routes.json` of 0.6.0 (risky as one more kind of job) gets 94% right
-and 6% over-routed: it sends archiving a session, moving a folder and closing
-an issue to Opus at extra-high effort.
+The routes that vary between runs vary in effort or between two tasks on the
+same model, not in model. Without Fable's `minConfidence` the same suite gets
+96% right, 3% over-routed and 1% under-routed: "rotate the TypeSafe API key
+and update every place it's stored" lands on Fable on every run, as a `design`
+Jev is 25 to 40% sure of. Every true design case in the suite scores 51% or
+more.
 
 Treat these as a floor test, not a promise. The cases were written alongside
 the routing rules, and several rounds of tuning came from misses this suite
@@ -296,7 +373,9 @@ writes every prompt and route to `eval/results/`, which git ignores: it holds
 your prompts. On 400 of the author's prompts, splitting out the stakes and
 keeping harness notes on the route in force took Opus from 47% of them to 33%,
 mostly merges, archiving, PR chores and `!` command output moving to Haiku or
-Sonnet.
+Sonnet. Moving `design` to Fable in 0.8.0 sent 17 of 400 (4%) to Fable, all of
+them from Opus; before Fable had a `minConfidence` it was 41, and 18 of those
+were a `design` Jev was less than 50% sure of.
 
 The pushback guard has its own offline check, with no key or API call. It tests
 `guards.pushback` against the corrections and near-misses under `pushback` in
@@ -340,10 +419,11 @@ together when they are read.
 | `pricing` | Dollars per million tokens, by model id, with an optional `longContext` rate above a token count |
 | `switching` | `expectedSteps`, `expectedOutput`, `cacheTtlMinutes`, `margin`, `fallbackMessages`: when a step down pays |
 | `guards` | `pushback`, `followUp` and `events` (regexes), `shortWords`, `holdTurns`, `toolErrors` |
-| `subagents` | `classify` (other types), and `types`: agent type to task |
+| `subagents` | `classify` (other types), `types`: agent type to task, and `ceiling`: the strongest model the router picks for a subagent |
+| `roles` | Each role's least `model` and `effort`, an optional `ceiling` model, and what sets it: `match` (a regex on your prompt), `origins` (prompt origin kinds, such as `coordinator`) and `skills` (skill names). Tried in the order listed |
 | `rules` | `match` (regex), then a `task` or a `model` and `effort`, a `why`, and `atLeast` to raise rather than decide |
 | `tasks` | `name`, the least `model` and `effort` it runs on, a `when` the classifier reads, an optional `not` that marks where the task ends, and an optional `raiseAbove` that asks about it on its own, yes or no. Jev leans slightly toward the option listed first, so list the costly tasks first |
-| `models` | `name`, `id`, optional `maxContext`. Order them weakest to strongest |
+| `models` | `name`, `id`, optional `maxContext`, `maxEffort` (the most effort it runs at), `minConfidence` (how sure the classifier must be of a kind of job for it to run on this model rather than the one beneath) and `escalateFrom` (the effort the model beneath reaches before a pushback or struggling turn moves up to this one). Order them weakest to strongest |
 | `efforts` | Levels, weakest to strongest, each with a `when` |
 
 The `when` of each task is the router's whole idea of your work. Edit it to
@@ -357,12 +437,12 @@ file is read, and the prompt runs as the session set it.
 claude plugin test kore-router
 ```
 
-runs `hooks/register.test.ts`, 52 tests that read as the router's
+runs `hooks/register.test.ts`, 73 tests that read as the router's
 specification: each test name states one behaviour, from "a rule routes
 without asking the classifier" to "a step down that wouldn't pay for its
 cache keeps the model". They run against a mocked engine, with no network and
-no model calls. `hooks/config.test.ts` adds 6 for where the router keeps its
-logs and your `routes.json`.
+no model calls. `hooks/config.test.ts` adds 11 for where the router keeps its
+logs and your `routes.json`, and for what its check refuses.
 
 The CLI and the desktop app each carry their own copy of the engine, and the
 two are not always the same version: the desktop app's can offer hook fields
@@ -381,7 +461,7 @@ beside it.
 ## Files
 
 - `hooks/register.tsx`: the hooks, and everything that touches the engine.
-- `hooks/decide.ts`: rules, floors, escalation and the step-down sum.
+- `hooks/decide.ts`: rules, floors, roles, escalation and the step-down sum.
 - `hooks/classify.ts`: what Jev and Haiku are asked, and how their answers are read.
 - `hooks/config.ts`: the types of `routes.json`, and its check.
 - `hooks/ledger.ts`: the log lines, and `/router savings`.

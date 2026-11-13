@@ -21,7 +21,23 @@ export type Model = {
   // The most context, in tokens, this model is trusted to work in. Past it the
   // router keeps a stronger model, whatever the job.
   maxContext?: number
+  // The most effort this model is run at: past it, it costs more for uneven gain.
+  maxEffort?: Effort
+  // Before a turn moves up to this model, it first runs below this effort on
+  // the model beneath, a level harder: effort before model.
+  escalateFrom?: Effort
+  // A kind of job on this model keeps it only when the classifier names that
+  // kind and is at least this sure (0 to 1). Otherwise the kind runs on the
+  // model beneath, so neither doubt nor `upwardMass` rounds a route up onto
+  // this one: a model this dear is for the jobs that are clearly its own.
+  minConfidence?: number
 }
+
+// A part a session plays, which holds it on at least `model` and `effort` from
+// when it is set until lifted, and, with `ceiling`, never above that model
+// unless the person's own floor says so. A prompt from a person that `match`es
+// sets it, as does a prompt of an origin kind in `origins` or a skill in `skills`.
+export type Role = { model: string; effort: Effort; ceiling?: string; match?: string; origins?: string[]; skills?: string[] }
 
 // A rule decides the route outright, or, with `atLeast`, only raises what the
 // classifier answers to its task (or model and effort) when it answers less.
@@ -77,7 +93,12 @@ export type Routes = {
     classify?: boolean
     // Agent type to task, settled without a classifier.
     types?: Record<string, string>
+    // The strongest model the router picks for a subagent. A model the Agent
+    // call named is kept above it.
+    ceiling?: string
   }
+  // The parts a session can play, tried in the order listed.
+  roles?: Record<string, Role>
   rules: Rule[]
   tasks: Task[]
   models: Model[]
@@ -108,6 +129,30 @@ export function check(routes: Routes) {
   for (const [type, task] of Object.entries(routes.subagents?.types ?? {})) {
     if (!tasks.has(task)) throw new Error(`subagent ${type} names an unknown task: ${task}`)
   }
+  const ceiling = routes.subagents?.ceiling
+  if (ceiling !== undefined && !models.has(ceiling)) throw new Error(`subagents.ceiling names an unknown model: ${ceiling}`)
+  // `max` is an effort a model can be asked for, though no task names it.
+  const known = new Set([...efforts, 'max'])
+  for (const one of routes.models) {
+    if (one.minConfidence !== undefined && !(one.minConfidence > 0 && one.minConfidence <= 1)) {
+      throw new Error(`model ${one.name} has a minConfidence outside 0 to 1: ${one.minConfidence}`)
+    }
+    for (const [key, effort] of [['maxEffort', one.maxEffort], ['escalateFrom', one.escalateFrom]] as const) {
+      if (effort !== undefined && !known.has(effort)) throw new Error(`model ${one.name} has an unknown ${key}: ${effort}`)
+    }
+  }
+  for (const [name, role] of Object.entries(routes.roles ?? {})) {
+    if (!models.has(role.model)) throw new Error(`role ${name} names an unknown model: ${role.model}`)
+    if (role.ceiling !== undefined && !models.has(role.ceiling)) throw new Error(`role ${name} names an unknown ceiling: ${role.ceiling}`)
+    if (!known.has(role.effort)) throw new Error(`role ${name} names an unknown effort: ${role.effort}`)
+    if (role.match !== undefined) {
+      try {
+        new RegExp(role.match, 'i')
+      } catch {
+        throw new Error(`role ${name} has a match that is not a regular expression: ${role.match}`)
+      }
+    }
+  }
   return routes
 }
 
@@ -118,6 +163,8 @@ export const effortRank = (effort: string | number | undefined) =>
   typeof effort === 'string' ? EFFORTS.indexOf(effort as Effort) : -1
 
 export const stronger = (a: Effort, b: Effort) => (effortRank(a) >= effortRank(b) ? a : b)
+
+export const weaker = (a: Effort, b: Effort) => (effortRank(a) <= effortRank(b) ? a : b)
 
 export const nextEffort = (effort: Effort) => EFFORTS[Math.min(effortRank(effort) + 1, EFFORTS.length - 1)]!
 
@@ -141,7 +188,14 @@ export const task = (routes: Routes, name: string) => {
 }
 
 // The price of a model by its id, a variant such as `[1m]` priced as its base.
-export const price = (routes: Routes, id: string) => routes.pricing?.[id] ?? routes.pricing?.[id.replace(/\[.*\]$/, '')]
+// A spend line may hold a model's name from `models` instead (an older version
+// logged a subagent's named model as the call gave it), so a name is priced as
+// its id.
+export const price = (routes: Routes, id: string) => {
+  const base = id.replace(/\[.*\]$/, '')
+  const named = routes.models.find(model => model.name === base)?.id
+  return routes.pricing?.[id] ?? routes.pricing?.[base] ?? (named === undefined ? undefined : routes.pricing?.[named])
+}
 
 // A plugin installed from a repository or the directory runs a copy,
 // plugins/cache/<marketplace>/<plugin>/<version>, which the next version

@@ -11,6 +11,7 @@ const PRICING = {
   'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.2 },
   'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 4 },
   'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 },
+  'claude-fable-5-2': { input: 8, output: 40, cacheRead: 0.2, cacheWrite: 16 },
 }
 
 // Each task asks for the lowest effort, so the classifier's effort shows
@@ -22,7 +23,11 @@ const ROUTES = {
   pricing: PRICING,
   switching: { expectedSteps: 8, expectedOutput: 5000, cacheTtlMinutes: 60, margin: 1.5 },
   guards: { pushback: "^\\W*(that'?s wrong|try again)", followUp: '^\\W*(yes|go ahead)[\\s,.!]*$', shortWords: 2, holdTurns: 2, toolErrors: 3 },
-  subagents: { classify: true, types: { Explore: 'lookup' } },
+  subagents: { classify: true, types: { Explore: 'lookup' }, ceiling: 'opus' },
+  roles: {
+    orchestrator: { model: 'fable', effort: 'high', skills: ['orchestrate'], match: '^\\s*/?orchestrate\\b|\\b(fan (this|it|that) out|use sub-?sessions)\\b' },
+    worker: { model: 'opus', effort: 'high', ceiling: 'opus', origins: ['coordinator'], match: '(^|\\n)[ \\t]*router:[ \\t]*worker\\b' },
+  },
   rules: [
     { match: '\\bultrathink\\b', model: 'opus', effort: 'max', why: 'asked for maximum thinking' },
     { match: '\\bprod\\b', model: 'opus', effort: 'high', atLeast: true, why: 'it touches something risky' },
@@ -31,13 +36,15 @@ const ROUTES = {
     { name: 'answer', model: 'haiku', effort: 'low', when: 'quick' },
     { name: 'lookup', model: 'haiku', effort: 'medium', when: 'reading' },
     { name: 'build', model: 'sonnet', effort: 'low', when: 'ordinary' },
-    { name: 'design', model: 'opus', effort: 'low', when: 'hard' },
+    { name: 'design', model: 'fable', effort: 'low', when: 'deciding how' },
+    { name: 'debug', model: 'opus', effort: 'low', when: 'finding a cause' },
     { name: 'risky', model: 'opus', effort: 'xhigh', when: 'costly mistakes' },
   ],
   models: [
     { name: 'haiku', id: 'claude-haiku-5-5', maxContext: 100_000 },
     { name: 'sonnet', id: 'claude-sonnet-5-5' },
     { name: 'opus', id: 'claude-opus-5-5' },
+    { name: 'fable', id: 'claude-fable-5-2', maxEffort: 'high', escalateFrom: 'xhigh' },
   ],
   efforts: [
     { name: 'low', when: 'immediate' },
@@ -85,6 +92,7 @@ function world(on: On, { status = 200, answers = {}, haiku = '', routes = ROUTES
   })
   on('ui.status', () => ({ value: undefined }))
   on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('skill.prompt', ($, e) => ({ text: e.text }))
   on('http.fetch', () => {
     asked.jev += 1
     return { value: { status, ok: status === 200, headers: {}, text: JSON.stringify({ answers: answer }) } }
@@ -174,7 +182,7 @@ test('the tasks on a stronger model, sharing upwardMass between them, move the r
   const answers = jev('build', 0.6, 0, { build: 0.55, design: 0.25, answer: 0.2 })
   const { sent } = world(on, { routes: { ...ROUTES, upwardMass: 0.25 }, answers })
   await ask($, 'make it faster')
-  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2' })
 })
 
 test('below upwardMass, the likeliest task stands', async ($, on) => {
@@ -182,6 +190,27 @@ test('below upwardMass, the likeliest task stands', async ($, on) => {
   const { sent } = world(on, { routes: { ...ROUTES, upwardMass: 0.4 }, answers })
   await ask($, 'add a --json flag')
   expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5' })
+})
+
+// Fable with a bar of its own: a kind on it must be named, and surely.
+const SURE = { ...ROUTES, upwardMass: 0.25, models: ROUTES.models.map(one => (one.name === 'fable' ? { ...one, minConfidence: 0.5 } : one)) }
+
+test('a kind on a model with its own minConfidence, named below it, runs on the model beneath', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('design', 0.36, 0, { design: 0.36, build: 0.34, answer: 0.3 }) })
+  await ask($, 'rotate the key everywhere it is stored')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
+})
+
+test('named at or above that minConfidence, the kind keeps its model', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('design', 0.55, 0, { design: 0.55, build: 0.45 }) })
+  await ask($, 'what would it take to support Windows?')
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2' })
+})
+
+test('upwardMass moves a route up to the model beneath one with its own minConfidence, never onto it', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('build', 0.6, 0, { build: 0.55, design: 0.25, answer: 0.2 }) })
+  await ask($, 'make it faster')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
 })
 
 // `risky` kept apart: Jev answers it yes or no beside the kind of job.
@@ -226,7 +255,7 @@ test('a short follow-up keeps the route in force without asking the classifier',
   await ask($, 'plan how the exporter should page through results')
   await ask($, 'yes')
   expect(asked.jev).toBe(1)
-  expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+  expect(sent[1]).toMatchObject({ model: 'claude-fable-5-2', effort: 'high' })
 })
 
 test('a prompt too short to classify keeps the route in force, still raised by an atLeast rule', async ($, on) => {
@@ -291,8 +320,8 @@ test('more context than a model is trusted with keeps a stronger one', async ($,
 })
 
 test('the same tier keeps the variant the session is on', async ($, on) => {
-  const { sent } = world(on, { answers: jev('design', 0.9, 3) })
-  await ask($, 'design the migration', { model: 'claude-opus-5-5[1m]' })
+  const { sent } = world(on, { answers: jev('debug', 0.9, 3) })
+  await ask($, 'find out why the export hangs', { model: 'claude-opus-5-5[1m]' })
   expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5[1m]', effort: 'xhigh' })
 })
 
@@ -358,8 +387,8 @@ test('a subagent of a listed type starts on its task, and its steps take its eff
 })
 
 test('any other subagent is classified on its own task', async ($, on) => {
-  const { spawned } = world(on, { answers: jev('design', 0.9, 2) })
-  await spawn($, { prompt: 'plan the storage migration', description: 'plan migration', subagentType: 'general-purpose' })
+  const { spawned } = world(on, { answers: jev('debug', 0.9, 2) })
+  await spawn($, { prompt: 'find out why the export hangs', description: 'export hang', subagentType: 'general-purpose' })
   expect(spawned[0]).toMatchObject({ model: 'claude-opus-5-5' })
 })
 
@@ -390,6 +419,176 @@ test('/router off hands the session back', async ($, on) => {
   await step($)
   expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' })
   expect(sent[1]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test('design routes to Fable', async ($, on) => {
+  const { sent } = world(on, { answers: jev('design', 0.9, 2) })
+  await ask($, 'plan how the exporter should page through results')
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2', effort: 'high' })
+})
+
+test('a route on Fable never runs above its maxEffort', async ($, on) => {
+  const { sent } = world(on, { answers: jev('design', 0.9, 3) })
+  await ask($, 'weigh three ways to shard the session store')
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2', effort: 'high' })
+})
+
+test('pushback on an Opus turn below xhigh thinks harder before moving to Fable; at xhigh it moves to Fable', async ($, on) => {
+  const { sent } = world(on, { answers: jev('debug', 0.9, 2) })
+  await ask($, 'find out why the export hangs')
+  await ask($, "that's wrong, it hangs before the query")
+  await ask($, "that's wrong, it still hangs")
+  expect(sent.map(request => [request.model, request.effort])).toEqual([
+    ['claude-opus-5-5', 'high'],
+    ['claude-opus-5-5', 'xhigh'],
+    ['claude-fable-5-2', 'high'],
+  ])
+})
+
+test("running the orchestrate skill holds the session on Fable · high, and appends the models note to the skill's text", async ($, on) => {
+  const { sent } = world(on, { answers: jev('build', 0.9, 0) })
+  const { text } = await $.skill.prompt({ skill: 'orchestrate', text: 'Split the job into work items.' })
+  await ask($, 'add a --json flag')
+  await ask($, 'add a --csv flag')
+  expect(text).toContain('Split the job into work items.\n\n## Models in force (Kore Model Router)')
+  expect(text).toContain('This session: claude-fable-5-2 · high')
+  expect(text).toContain('`model: "claude-opus-5-5"` and `effort: "high"`')
+  expect(text).toContain('`Router: worker`')
+  expect(text).toContain('never above opus')
+  expect(sent.map(request => [request.model, request.effort])).toEqual([
+    ['claude-fable-5-2', 'high'],
+    ['claude-fable-5-2', 'high'],
+  ])
+})
+
+test('a skill no role lists keeps its text as it was', async ($, on) => {
+  world(on)
+  const { text } = await $.skill.prompt({ skill: 'commit', text: 'Write the commit.' })
+  expect(text).toBe('Write the commit.')
+})
+
+test('an orchestration phrase from the person holds the session on Fable · high', async ($, on) => {
+  const { sent } = world(on, { answers: jev('build', 0.9, 0) })
+  await ask($, 'fan this out across the three repos')
+  await ask($, 'add a --json flag')
+  expect(sent.map(request => [request.model, request.effort])).toEqual([
+    ['claude-fable-5-2', 'high'],
+    ['claude-fable-5-2', 'high'],
+  ])
+})
+
+// A coordinating session's hand-off to the worker session it started.
+const handOff = async ($: Engine, text: string) => {
+  await $.prompt.submit({ text, wait: false, origin: { kind: 'coordinator' } })
+  await step($)
+}
+
+test('a coordinator prompt holds a worker on Opus · high, is routed, and never runs above Opus even when its task is design', async ($, on) => {
+  const { sent, asked, answering } = world(on, { answers: jev('build', 0.9, 0) })
+  await handOff($, 'Build the exporter in src/export.ts.')
+  answering(jev('design', 0.9, 2))
+  await handOff($, 'Now plan how the importer should page.')
+  expect(asked.jev).toBe(2)
+  expect(sent.map(request => [request.model, request.effort])).toEqual([
+    ['claude-opus-5-5', 'high'],
+    ['claude-opus-5-5', 'high'],
+  ])
+})
+
+test('a brief the desktop app delivers, its `Router: worker` line under the starting session\'s background, holds a worker too', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0) })
+  await $.prompt.submit({
+    text: 'Background (from the session that started this one):\nThe importer is being split in three.\n\nRouter: worker\n\nAdd paging to the importer.',
+    wait: false,
+    origin: { kind: 'sdk' },
+  })
+  await step($)
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+})
+
+test('a mention of the router and a worker inside a sentence sets no role', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0) })
+  await ask($, 'does the router: worker line need to come first?')
+  expect(sent[0]).toMatchObject({ model: 'claude-haiku-5-5' })
+})
+
+test('a brief that opens `Router: worker` holds a worker on Opus · high from a person too', async ($, on) => {
+  const { sent } = world(on, { answers: jev('design', 0.9, 2) })
+  await ask($, 'Router: worker\nPlan how the importer should page.')
+  await ask($, 'add a --json flag')
+  expect(sent.map(request => [request.model, request.effort])).toEqual([
+    ['claude-opus-5-5', 'high'],
+    ['claude-opus-5-5', 'high'],
+  ])
+})
+
+test("the person's own floor still goes above a role's ceiling", async ($, on) => {
+  const { sent } = world(on, { answers: jev('design', 0.9, 2) })
+  await handOff($, 'Plan how the importer should page.')
+  await run($, 'floor fable')
+  await ask($, 'and the exporter?')
+  expect(sent.map(request => request.model)).toEqual(['claude-opus-5-5', 'claude-fable-5-2'])
+})
+
+test('while a role is set, the line under the prompt and /router name it', async ($, on) => {
+  world(on, { answers: jev('build', 0.9, 0) })
+  on('ui.render', { component: 'PromptHint' }, ($, e) => $.ui.resolve(e).Text({ dimColor: true, children: e.props.hint }))
+  await run($, 'role orchestrator')
+  await ask($, 'add a --json flag')
+  const hint = await $.ui.mount({
+    plugin: 'kore-model-router',
+    surface: 'terminal',
+    component: 'PromptHint',
+    props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+  })
+  expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: fable · high [orchestrator]' })
+  expect((await run($, '')).text).toContain('Role: orchestrator.')
+})
+
+test('setting a role writes a decision that says so, with the origin of each routed prompt', async ($, on) => {
+  const { files } = world(on, { answers: jev('build', 0.9, 0) })
+  await handOff($, 'Build the exporter in src/export.ts.')
+  const lines = files['logs/this-session.routes.jsonl']!.trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
+  expect(lines[0]).toMatchObject({ note: 'role: worker (a coordinator prompt)', origin: 'coordinator' })
+  expect(lines[1]).toMatchObject({ ran: 'claude-opus-5-5 · high', origin: 'coordinator' })
+})
+
+test('/router role off lifts the role', async ($, on) => {
+  const { sent } = world(on, { answers: jev('build', 0.9, 0) })
+  await run($, 'role orchestrator')
+  await ask($, 'add a --json flag')
+  await run($, 'role off')
+  await ask($, 'add a --csv flag')
+  expect(sent.map(request => request.model)).toEqual(['claude-fable-5-2', 'claude-sonnet-5-5'])
+})
+
+test('/router floor off lifts a role too', async ($, on) => {
+  const { sent } = world(on, { answers: jev('build', 0.9, 0) })
+  await run($, 'role orchestrator')
+  await ask($, 'add a --json flag')
+  await run($, 'floor off')
+  await ask($, 'add a --csv flag')
+  expect(sent.map(request => request.model)).toEqual(['claude-fable-5-2', 'claude-sonnet-5-5'])
+})
+
+test('a subagent the router picks never runs above the ceiling', async ($, on) => {
+  const { spawned } = world(on, { answers: jev('design', 0.9, 2) })
+  await spawn($, { prompt: 'plan the storage migration', description: 'plan migration', subagentType: 'general-purpose' })
+  expect(spawned[0]).toMatchObject({ model: 'claude-opus-5-5' })
+})
+
+test('a subagent the call named Fable is kept, at no more effort than Fable takes', async ($, on) => {
+  const { sent, spawned } = world(on, { answers: jev('design', 0.9, 3) })
+  const { agentId } = await spawn($, { prompt: 'plan the storage migration', subagentType: 'general-purpose', model: 'fable' })
+  await step($, { agentId, model: 'claude-fable-5-2', effort: 'medium' })
+  expect(spawned[0]).toMatchObject({ model: 'claude-fable-5-2' })
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2', effort: 'high' })
+})
+
+test('a routes.json whose role names an unknown model is refused when read', async ($, on) => {
+  const { sent } = world(on, { answers: jev('answer', 0.9, 0), routes: { ...ROUTES, roles: { orchestrator: { model: 'gpt', effort: 'high' } } } })
+  await ask($, 'what does git stash pop do?')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
 })
 
 // Starts a session, and keeps the toasts it shows.
@@ -568,7 +767,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
       props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
     })
     expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: sonnet · medium' })
-    answering(jev('design', 0.95, 2))
+    answering(jev('debug', 0.95, 2))
     await ask($, 'the export crashes on an empty table, find out why')
     expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: expect.stringMatching(/^router: opus/) })
   })
@@ -595,7 +794,7 @@ test('the desktop shows the route under its input bar, beside the mode labels, a
   expect(await footer.find({ text: 'focus' })).toBeDefined()
   await footer.press({ key: 'router-line' })
   expect(opened).toEqual(['router'])
-  answering(jev('design', 0.95, 2))
+  answering(jev('debug', 0.95, 2))
   await ask($, 'the export crashes on an empty table, find out why')
   expect((await footer.find({ key: 'router-line' }))?.props).toMatchObject({ label: expect.stringMatching(/^router: opus/) })
 })

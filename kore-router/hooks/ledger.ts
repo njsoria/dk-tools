@@ -32,6 +32,8 @@ export type Entry = {
   failed?: string
   messages?: number
   agent?: string
+  // Where a main-loop prompt came from: `composer` for one typed, `coordinator` for a hand-off.
+  origin?: string
   session?: string
   sessionEffort?: string | number
   // How long the classifier took, and all of routing, in milliseconds.

@@ -19,8 +19,9 @@ const parts = (ran = '') => {
 // The row's summary: when, what it ran on, and whose it was.
 export function summary(row: Entry) {
   const { model, effort } = parts(row.ran)
-  const route = row.failed === undefined ? `${model} · ${effort}` : 'no new route'
-  const marks = [row.agent === undefined ? '' : `  ${row.agent}`, row.held ? '  held' : '', row.note === undefined ? '' : '  *'].join('')
+  // A role set or lifted runs nothing: its row says what changed instead.
+  const route = row.failed !== undefined ? 'no new route' : row.ran === undefined ? (row.note ?? '') : `${model} · ${effort}`
+  const marks = [row.agent === undefined ? '' : `  ${row.agent}`, row.held ? '  held' : '', row.note === undefined || row.ran === undefined ? '' : '  *'].join('')
   return `${clock(row.at)}  ${route}${marks}`
 }
 
@@ -36,6 +37,7 @@ export function details(row: Entry): [string, string][] {
     ['Decided by', row.via],
     ['Changed because', row.note],
     ['Subagent', row.agent],
+    ['From', row.origin],
     ['Session had', row.session === undefined ? undefined : `${row.session}${row.sessionEffort === undefined ? '' : ` · ${row.sessionEffort}`}`],
     ['Messages', row.messages === undefined ? undefined : String(row.messages)],
     ['Classifier', ms(row.classifyMs)],
