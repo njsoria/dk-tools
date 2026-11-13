@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { type Routes, check, dataDir, ownRoutes, versionsDir } from './config'
+import { type Routes, check, dataDir, ownRoutes, price, versionsDir } from './config'
 
 const COPY = '/Users/sam/.claude/plugins/cache/dk-tools/kore-model-router/0.4.0'
 
@@ -56,6 +56,17 @@ const ROUTES = {
     { name: 'xhigh', when: 'hard' },
   ],
 } as Routes
+
+test('a model is priced by its id, a variant of it, or its name in models', () => {
+  const opus = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
+  const priced = { ...ROUTES, pricing: { 'claude-opus-5-5': opus } }
+  expect(price(priced, 'claude-opus-5-5')).toEqual(opus)
+  expect(price(priced, 'claude-opus-5-5[1m]')).toEqual(opus)
+  expect(price(priced, 'opus')).toEqual(opus)
+  expect(price(priced, 'fable')).toBeUndefined()
+  expect(price(priced, 'claude-opus-5')).toBeUndefined()
+  expect(price(ROUTES, 'opus')).toBeUndefined()
+})
 
 test('roles, a subagent ceiling and a top effort the routes.json lists are accepted', () => {
   const roles = { worker: { model: 'opus', effort: 'max', ceiling: 'opus', origins: ['coordinator'], match: '^router: worker\\b' } } as Routes['roles']

@@ -237,10 +237,12 @@ least `switching.margin` (1.5) times what the switch costs, worked out from:
 
 At current prices a step from Opus to Haiku pays at almost any length under
 100K. A step from Opus to Sonnet almost never pays once there is a
-conversation, since Sonnet 5.5's cache reads cost the same as Opus 5.5's: the
-router keeps Opus and still lowers the effort. Changing effort alone doesn't
-rewrite the cache. Fable 5.2's cache reads also cost the same as Opus 5.5's, so
-a session that has moved to Fable tends to stay there at a lower effort.
+conversation: Sonnet 5.5's cache reads are half the price of Opus 5.5's ($0.10
+against $0.20 per million), which is small beside the $4 per million Sonnet
+charges to write the conversation into its own cache. The router keeps Opus and
+still lowers the effort. Changing effort alone doesn't rewrite the cache. Fable
+5.2's cache reads cost the same as Opus 5.5's, so a session that has moved to
+Fable tends to stay there at a lower effort.
 
 A model not in `pricing` falls back to a plain rule: no step down past
 `fallbackMessages` (30) messages.

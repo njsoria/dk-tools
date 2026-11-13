@@ -188,7 +188,14 @@ export const task = (routes: Routes, name: string) => {
 }
 
 // The price of a model by its id, a variant such as `[1m]` priced as its base.
-export const price = (routes: Routes, id: string) => routes.pricing?.[id] ?? routes.pricing?.[id.replace(/\[.*\]$/, '')]
+// A spend line may hold a model's name from `models` instead (an older version
+// logged a subagent's named model as the call gave it), so a name is priced as
+// its id.
+export const price = (routes: Routes, id: string) => {
+  const base = id.replace(/\[.*\]$/, '')
+  const named = routes.models.find(model => model.name === base)?.id
+  return routes.pricing?.[id] ?? routes.pricing?.[base] ?? (named === undefined ? undefined : routes.pricing?.[named])
+}
 
 // A plugin installed from a repository or the directory runs a copy,
 // plugins/cache/<marketplace>/<plugin>/<version>, which the next version
