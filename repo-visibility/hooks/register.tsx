@@ -23,6 +23,11 @@ export function describe(stdout: string): string | undefined {
   return undefined
 }
 
+/** The line without the repo's name: `🔒 private`. */
+export function short(text: string): string {
+  return text.split(' · ')[0] ?? text
+}
+
 // Drawn by the ui.render hooks below; a write redraws them.
 const line = atom({ plugin: 'repoVis', key: 'line' } as const, null)
 
@@ -72,16 +77,23 @@ export const register: Register = on => {
   })
 
   // The desktop app never asks for the hint line; under its input bar it draws
-  // the session's mode labels, so there the repo sits beside them.
+  // the session's mode labels, so there the repo sits beside them. That row is
+  // narrow, so it shows the visibility alone; a click shows the repo's name.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     if (e.surface === 'terminal') return next(e)
     const text = await read($, line)
     if (text === null) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button } = $.ui.resolve(e)
 
     return (
       <Box columnGap={1}>
-        <Text dimColor>{text}</Text>
+        <Button
+          key="repo-vis-line"
+          plain
+          dimColor
+          label={short(text)}
+          onPress={() => $.ui.toast(text)}
+        />
         {await next(e)}
       </Box>
     )
