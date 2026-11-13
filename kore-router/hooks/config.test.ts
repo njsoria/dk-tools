@@ -72,6 +72,11 @@ test('a role whose match is not a regular expression is refused', () => {
   expect(() => check({ ...ROUTES, roles: { worker: { model: 'opus', effort: 'high', match: '(' } } } as Routes)).toThrow('not a regular expression')
 })
 
+test('a model whose minConfidence is outside 0 to 1 is refused', () => {
+  const models = [...ROUTES.models.slice(0, 3), { name: 'fable', id: 'claude-fable-5-2', minConfidence: 1.5 }] as Routes['models']
+  expect(() => check({ ...ROUTES, models })).toThrow('model fable has a minConfidence outside 0 to 1: 1.5')
+})
+
 test('a subagent ceiling, maxEffort or escalateFrom routes.json does not know is refused', () => {
   expect(() => check({ ...ROUTES, subagents: { ceiling: 'gpt' } })).toThrow('subagents.ceiling names an unknown model: gpt')
   const models = [...ROUTES.models.slice(0, 2), { name: 'fable', id: 'claude-fable-5-2', maxEffort: 'huge' }] as Routes['models']

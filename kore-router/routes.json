@@ -56,18 +56,18 @@
 
   "_roles": "A part a session plays, tried in the order listed. Once set it holds the session on at least its model and effort until `/router role off` or `/router floor off`, and with `ceiling` never above that model unless your own `/router floor` says so. A prompt you send that `match`es sets it, as does a prompt whose origin kind is in `origins` (a coordinating session's hand-off to a worker is `coordinator`) or a skill in `skills`. A prompt of an origin kind listed here is routed as yours is.",
   "roles": {
-    "orchestrator": {
-      "model": "fable",
-      "effort": "high",
-      "skills": ["orchestrate"],
-      "match": "^\\s*/?orchestrate\\b|\\b(fan (this|it|that) out|use sub-?sessions|split (this|it|that) across agents)\\b"
-    },
     "worker": {
       "model": "opus",
       "effort": "high",
       "ceiling": "opus",
       "origins": ["coordinator"],
       "match": "^\\s*router:\\s*worker\\b"
+    },
+    "orchestrator": {
+      "model": "fable",
+      "effort": "high",
+      "skills": ["orchestrate"],
+      "match": "^\\s*/?orchestrate\\b|\\b(fan (this|it|that) out|use sub-?sessions|split (this|it|that) across agents)\\b"
     }
   },
 
@@ -91,7 +91,7 @@
       "effort": "xhigh",
       "raiseAbove": 0.5,
       "when": "A mistake in this job would be costly or hard to undo: changing security, auth, secrets or permissions; payments or billing; migrating, overwriting or deleting data; deploying to production or changing live infrastructure; concurrency.",
-      "not": "Nothing here is costly to get wrong or hard to undo: local edits that version control can undo, work on a feature branch, opening a pull request, sending a message, archiving or tidying sessions, moving local files, reading or reporting without changing anything."
+      "not": "Nothing here is costly to get wrong or hard to undo: local edits that version control can undo, work on a feature branch, opening a pull request, sending a message, archiving or tidying sessions, moving local files, reading or reporting without changing anything, a question about how something works or what it does."
     },
     {
       "name": "design",
@@ -116,7 +116,7 @@
       "name": "build",
       "model": "sonnet",
       "effort": "medium",
-      "when": "Writing or extending code or documents to a clear goal: a well-specified feature, script or test, fixing a bug whose cause is known or obvious, a refactor within a few files, a commit or PR description, writing up or updating a document from what has been discussed.",
+      "when": "Writing or extending code or documents to a clear goal: a well-specified feature, script or test, fixing a bug whose cause is known or obvious, a refactor within a few files, carrying out a step of an agreed plan, adding a flag or option to a command, a commit or PR description, writing up or updating a document from what has been discussed.",
       "not": "An open-ended aim with no known way to reach it, such as making something faster or more reliable, which first needs finding where the problem is."
     },
     {
@@ -137,16 +137,16 @@
       "model": "haiku",
       "effort": "low",
       "when": "A small edit or action whose content the request fully dictates: a rename, a typo, formatting, a version bump, a one-line change spelled out in the request, a routine git or housekeeping command named in the request.",
-      "not": "Anything where the assistant decides what to write: rewriting a document, applying what was discussed earlier, an edit alongside other work."
+      "not": "Anything where the assistant decides what to write: rewriting a document, applying what was discussed earlier, carrying out a step of a plan, adding a feature, flag or option, an edit alongside other work."
     }
   ],
 
-  "_models": "Weakest first. maxContext is the most context, in tokens, a model is trusted to work in; past it the router keeps a stronger one. maxEffort is the most effort a model is run at; past it, it costs more for uneven gain. escalateFrom makes a pushback or a struggling turn think a level harder on the model beneath until it reaches that effort, before moving up to this one: effort before model.",
+  "_models": "Weakest first. maxContext is the most context, in tokens, a model is trusted to work in; past it the router keeps a stronger one. maxEffort is the most effort a model is run at; past it, it costs more for uneven gain. escalateFrom makes a pushback or a struggling turn think a level harder on the model beneath until it reaches that effort, before moving up to this one: effort before model. minConfidence on a model means a kind of job on it keeps that model only when the classifier names the kind and is at least that sure; otherwise the kind runs on the model beneath, so neither doubt nor upwardMass rounds a route up onto it.",
   "models": [
     { "name": "haiku", "id": "claude-haiku-5-5", "maxContext": 100000 },
     { "name": "sonnet", "id": "claude-sonnet-5-5" },
     { "name": "opus", "id": "claude-opus-5-5" },
-    { "name": "fable", "id": "claude-fable-5-2", "maxEffort": "high", "escalateFrom": "xhigh" }
+    { "name": "fable", "id": "claude-fable-5-2", "maxEffort": "high", "escalateFrom": "xhigh", "minConfidence": 0.5 }
   ],
 
   "efforts": [

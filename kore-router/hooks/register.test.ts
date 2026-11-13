@@ -192,6 +192,27 @@ test('below upwardMass, the likeliest task stands', async ($, on) => {
   expect(sent[0]).toMatchObject({ model: 'claude-sonnet-5-5' })
 })
 
+// Fable with a bar of its own: a kind on it must be named, and surely.
+const SURE = { ...ROUTES, upwardMass: 0.25, models: ROUTES.models.map(one => (one.name === 'fable' ? { ...one, minConfidence: 0.5 } : one)) }
+
+test('a kind on a model with its own minConfidence, named below it, runs on the model beneath', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('design', 0.36, 0, { design: 0.36, build: 0.34, answer: 0.3 }) })
+  await ask($, 'rotate the key everywhere it is stored')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
+})
+
+test('named at or above that minConfidence, the kind keeps its model', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('design', 0.55, 0, { design: 0.55, build: 0.45 }) })
+  await ask($, 'what would it take to support Windows?')
+  expect(sent[0]).toMatchObject({ model: 'claude-fable-5-2' })
+})
+
+test('upwardMass moves a route up to the model beneath one with its own minConfidence, never onto it', async ($, on) => {
+  const { sent } = world(on, { routes: SURE, answers: jev('build', 0.6, 0, { build: 0.55, design: 0.25, answer: 0.2 }) })
+  await ask($, 'make it faster')
+  expect(sent[0]).toMatchObject({ model: 'claude-opus-5-5' })
+})
+
 // `risky` kept apart: Jev answers it yes or no beside the kind of job.
 const APART = { ...ROUTES, tasks: ROUTES.tasks.map(task => (task.name === 'risky' ? { ...task, raiseAbove: 0.7 } : task)) }
 
@@ -503,7 +524,7 @@ test('while a role is set, the line under the prompt and /router name it', async
     component: 'PromptHint',
     props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
   })
-  expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: expect.stringMatching(/^router: fable · high.* \[orchestrator\]$/) })
+  expect((await hint.find({ key: 'router-line' }))?.props).toMatchObject({ label: 'router: fable · high [orchestrator]' })
   expect((await run($, '')).text).toContain('Role: orchestrator.')
 })
 

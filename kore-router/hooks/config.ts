@@ -26,6 +26,11 @@ export type Model = {
   // Before a turn moves up to this model, it first runs below this effort on
   // the model beneath, a level harder: effort before model.
   escalateFrom?: Effort
+  // A kind of job on this model keeps it only when the classifier names that
+  // kind and is at least this sure (0 to 1). Otherwise the kind runs on the
+  // model beneath, so neither doubt nor `upwardMass` rounds a route up onto
+  // this one: a model this dear is for the jobs that are clearly its own.
+  minConfidence?: number
 }
 
 // A part a session plays, which holds it on at least `model` and `effort` from
@@ -129,6 +134,9 @@ export function check(routes: Routes) {
   // `max` is an effort a model can be asked for, though no task names it.
   const known = new Set([...efforts, 'max'])
   for (const one of routes.models) {
+    if (one.minConfidence !== undefined && !(one.minConfidence > 0 && one.minConfidence <= 1)) {
+      throw new Error(`model ${one.name} has a minConfidence outside 0 to 1: ${one.minConfidence}`)
+    }
     for (const [key, effort] of [['maxEffort', one.maxEffort], ['escalateFrom', one.escalateFrom]] as const) {
       if (effort !== undefined && !known.has(effort)) throw new Error(`model ${one.name} has an unknown ${key}: ${effort}`)
     }

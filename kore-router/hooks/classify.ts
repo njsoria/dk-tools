@@ -104,8 +104,20 @@ export function readJev(routes: Routes, text: string): Verdict {
 // kinds on a stronger model share at least `upwardMass` of the probability
 // between them, take the likeliest of those: a misroute down costs quality, one
 // up only money, so the bar to move up is lower than the bar to win.
+//
+// A model with its own `minConfidence` is earned, not rounded up to: a kind on
+// it keeps that model only when it is the one Jev named and Jev is that sure of
+// it. Otherwise the kind counts as running on the model beneath, so doubt and
+// `upwardMass` still move a route up, but never onto that model.
 function pickTask(routes: Routes, answer: JevReply['answers']['task']) {
-  const named = (name: string | undefined) => routes.tasks.find(task => task.name === name)
+  const earned = (task: Task | undefined) => {
+    if (task === undefined) return undefined
+    const own = modelNamed(routes, task.model)
+    if (own.minConfidence === undefined || (task.name === answer.choice && answer.confidence >= own.minConfidence)) return task
+    const beneath = routes.models[tier(routes, own.id) - 1]
+    return beneath === undefined ? task : { ...task, model: beneath.name }
+  }
+  const named = (name: string | undefined) => earned(routes.tasks.find(task => task.name === name))
   const ranked = Object.entries(answer.probabilities)
     .sort((a, b) => b[1] - a[1])
     .map(([name, p]) => ({ task: named(name), p }))

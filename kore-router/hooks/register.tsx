@@ -627,10 +627,13 @@ export const register: Register = (on, options) => {
     const route = pinned.get(e.turnId)
     lastModel = route?.model ?? e.model
     steps.set(e.turnId, e.index + 1)
+    // The role's own floor is named by the line's ending, so not in its reasons too.
+    const reasons = route?.note
+      ?.split('; ')
+      .filter(reason => reason !== role)
+      .join('; ')
     const said =
-      route === undefined
-        ? line
-        : withRole(`router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${route.note === undefined ? '' : ` (${route.note})`}`, role)
+      route === undefined ? line : withRole(`router: ${route.model.replace(/^claude-|-[\d-]+.*$/g, '')} · ${route.effort}${reasons ? ` (${reasons})` : ''}`, role)
     if (said !== line) {
       line = said
       await show($, line)

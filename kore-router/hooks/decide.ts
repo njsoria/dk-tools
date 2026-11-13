@@ -76,6 +76,13 @@ export const isThin = (routes: Routes, text: string) => {
   return said !== '' && !said.includes('?') && said.split(/\s+/).length <= max
 }
 
+// A task the classifier was not sure enough of for its own model runs on the
+// one beneath, which the verdict's task then names.
+const beneath = (routes: Routes, task: { model: string }, route: Route): Route => {
+  const on = model(routes, task.model)
+  return on.id === route.model ? route : { ...route, model: on.id, name: on.name, via: `${route.via}; not sure enough for ${route.name}` }
+}
+
 // The classifier's task, never run below its own model and effort, nor below
 // any task Jev said yes to on its own, nor below any `atLeast` rule the text
 // matched.
@@ -84,7 +91,7 @@ export const fromVerdict = (routes: Routes, verdict: Verdict, raises: Rule[]) =>
     (best, rule) => atLeast(routes, best, ruled(routes, rule)),
     (verdict.raises ?? []).reduce(
       (best, task) => atLeast(routes, best, routeTask(routes, task.name, undefined, `jev says ${task.name}`)),
-      routeTask(routes, verdict.task.name, verdict.effort, verdict.via),
+      beneath(routes, verdict.task, routeTask(routes, verdict.task.name, verdict.effort, verdict.via)),
     ),
   )
 
