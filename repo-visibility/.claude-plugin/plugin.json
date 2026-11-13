@@ -1,0 +1,10 @@
+{
+  "name": "repoVis",
+  "version": "0.1.0",
+  "description": "Shows under the prompt whether the repo you are in is private or public on GitHub.",
+  "license": "MIT",
+  "author": {
+    "name": "Nate Soria",
+    "url": "https://github.com/njsoria"
+  }
+}
